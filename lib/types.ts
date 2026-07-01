@@ -36,6 +36,7 @@ export interface Client {
   fitness_level: string
   equipment: string
   days_per_week: number
+  session_duration?: number
   injuries?: string
   notes?: string
   programme?: Programme

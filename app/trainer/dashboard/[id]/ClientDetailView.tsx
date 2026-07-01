@@ -258,6 +258,8 @@ export default function ClientDetailView({ client: initial, sessions }: {
       {swappingIdx !== null && day && (
         <SwapModal
           exercise={day.exercises[swappingIdx]}
+          currentExercises={day.exercises.map(e => e.name)}
+          client={client}
           onSwap={newEx => swapExercise(swappingIdx, newEx)}
           onClose={() => setSwappingIdx(null)}
         />
@@ -372,8 +374,10 @@ function ExerciseCard({ ex, idx, expanded, onToggle, onToggleSet, onWeightChange
 
 // ── Swap modal ─────────────────────────────────────────────────────────────
 
-function SwapModal({ exercise, onSwap, onClose }: {
+function SwapModal({ exercise, currentExercises, client, onSwap, onClose }: {
   exercise: Exercise;
+  currentExercises: string[];
+  client: Client;
   onSwap: (ex: Exercise) => void;
   onClose: () => void;
 }) {
@@ -383,12 +387,24 @@ function SwapModal({ exercise, onSwap, onClose }: {
   useEffect(() => {
     (async () => {
       try {
+        const otherExercises = currentExercises.filter(n => n !== exercise.name);
         const res = await fetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: `Suggest 4 alternative exercises to replace: "${exercise.name}" (${exercise.sets} sets × ${exercise.reps}).
-Return ONLY a JSON array, no markdown. Each item: { "name": string, "sets": string, "reps": string, "notes": string }`,
+            prompt: `Suggest 4 alternative exercises to replace "${exercise.name}" for this client:
+- Age: ${client.age}, Weight: ${client.weight}kg, Gender: ${client.gender}
+- Goal: ${client.goal}, Fitness Level: ${client.fitness_level}
+- Equipment: ${client.equipment}
+- Injuries: ${client.injuries || "None"}
+
+The replacement must:
+1. Train the same muscle group as "${exercise.name}"
+2. NOT be any of these exercises already in today's session: ${otherExercises.join(", ")}
+3. Match their fitness level (${client.fitness_level}) and available equipment (${client.equipment})
+4. Keep the same sets/reps structure: ${exercise.sets} sets × ${exercise.reps}
+
+Return ONLY a JSON array, no markdown. Each item: { "name": string, "sets": string, "reps": string, "rpe": string, "notes": string }`,
             systemPrompt: "You are an expert personal trainer. Return only valid JSON.",
           }),
         });

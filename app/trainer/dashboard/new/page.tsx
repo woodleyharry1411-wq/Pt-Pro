@@ -12,7 +12,7 @@ const EQUIPMENT      = ["Full Gym", "Home Gym (Dumbbells/Bands)", "Bodyweight On
 type Form = {
   name: string; age: string; weight: string; height: string; gender: string;
   goal: string; fitness_level: string; equipment: string; days_per_week: number;
-  injuries: string; notes: string;
+  session_duration: number; injuries: string; notes: string;
 };
 
 const bmi = (w: string, h: string) => (+w && +h) ? (+w / (+h / 100) ** 2).toFixed(1) : "—";
@@ -22,7 +22,7 @@ export default function NewClient() {
   const [form, setForm] = useState<Form>({
     name: "", age: "", weight: "", height: "", gender: "Male",
     goal: GOALS[0], fitness_level: FITNESS_LEVELS[0], equipment: EQUIPMENT[0],
-    days_per_week: 4, injuries: "", notes: "",
+    days_per_week: 4, session_duration: 60, injuries: "", notes: "",
   });
   const [loading, setLoading] = useState(false);
   const set = (k: keyof Form, v: string | number) => setForm(f => ({ ...f, [k]: v }));
@@ -33,25 +33,51 @@ export default function NewClient() {
     }
     setLoading(true);
 
-    const prompt = `
-Client profile:
-- Name: ${form.name}, Age: ${form.age}, Gender: ${form.gender}
-- Weight: ${form.weight}kg, Height: ${form.height}cm (BMI: ${bmi(form.weight, form.height)})
-- Goal: ${form.goal}, Fitness level: ${form.fitness_level}
-- Equipment: ${form.equipment}, Days per week: ${form.days_per_week}
-- Injuries/limitations: ${form.injuries || "None"}
-- Trainer notes: ${form.notes || "None"}
+    const bmiVal = bmi(form.weight, form.height);
+    const age = parseInt(form.age);
+    const ageContext = age < 25 ? "young adult — can handle higher intensity and volume"
+      : age < 40 ? "prime training age — good recovery capacity"
+      : age < 55 ? "masters athlete — prioritise joint health, adequate warm-up, and recovery"
+      : "senior athlete — emphasise mobility, stability, lighter loads with higher reps, longer rest";
 
-Create a ${form.days_per_week}-day weekly training programme.
+    const bmiContext = parseFloat(bmiVal) < 18.5 ? "underweight — avoid excessive cardio, prioritise strength and hypertrophy"
+      : parseFloat(bmiVal) < 25 ? "healthy weight"
+      : parseFloat(bmiVal) < 30 ? "slightly overweight — include compound movements that burn more calories"
+      : "higher BMI — avoid high-impact exercises on joints, prioritise low-impact cardio and strength";
+
+    const prompt = `
+You are designing a personalised training programme for this specific client. Tailor every exercise choice, set/rep scheme, and intensity to their exact profile.
+
+CLIENT PROFILE:
+- Name: ${form.name}, Age: ${form.age} (${ageContext}), Gender: ${form.gender}
+- Weight: ${form.weight}kg, Height: ${form.height}cm, BMI: ${bmiVal} (${bmiContext})
+- Primary Goal: ${form.goal}
+- Fitness Level: ${form.fitness_level}
+- Available Equipment: ${form.equipment}
+- Training Days Per Week: ${form.days_per_week}
+- Session Duration: ${form.session_duration} minutes (design the programme to fit this time)
+- Injuries/Limitations: ${form.injuries || "None"}
+- Trainer Notes: ${form.notes || "None"}
+
+GUIDELINES:
+- Match exercise difficulty strictly to their fitness level (${form.fitness_level})
+- For "${form.goal}" goal: choose exercises and rep ranges that directly serve this goal
+- Keep session within ${form.session_duration} minutes — adjust exercise count and rest times accordingly (45 min = 4-5 exercises, 60 min = 5-6 exercises, 90 min = 7-8 exercises)
+- Account for age ${form.age}: ${ageContext}
+- Only use equipment available: ${form.equipment}
+- If injuries listed, explicitly avoid movements that aggravate them and suggest safe alternatives
+- Rep ranges: strength = 3-5, hypertrophy = 8-12, endurance = 15-20, fat loss = 12-15 with short rest
+- Include warm-up notes in the first exercise coaching cue
+- Use specific, realistic weights or RPE targets based on their weight (${form.weight}kg) and level
+
 Return ONLY a JSON object, no markdown:
 {
-  "summary": "2-3 sentence overview",
+  "summary": "3-4 sentence personalised overview mentioning their specific goal, age, fitness level, and session length",
   "weeklyStructure": [
     { "label": "DAY 1", "focus": "e.g. Upper Body Push",
-      "exercises": [{ "name": "...", "sets": "3", "reps": "10-12", "rpe": "7", "notes": "..." }] }
+      "exercises": [{ "name": "...", "sets": "3", "reps": "10-12", "rpe": "7", "notes": "specific coaching cue..." }] }
   ]
-}
-Include 4-6 exercises per day. rpe is optional (1-10). notes is a short coaching cue.`;
+}`;
 
     try {
       const res  = await fetch("/api/generate", {
@@ -67,6 +93,7 @@ Include 4-6 exercises per day. rpe is optional (1-10). notes is a short coaching
         name: form.name, age: +form.age, weight: +form.weight, height: +form.height,
         gender: form.gender, goal: form.goal, fitness_level: form.fitness_level,
         equipment: form.equipment, days_per_week: form.days_per_week,
+        session_duration: form.session_duration,
         injuries: form.injuries, notes: form.notes, programme,
       });
       router.push(`/trainer/dashboard/${client.id}`);
@@ -109,6 +136,7 @@ Include 4-6 exercises per day. rpe is optional (1-10). notes is a short coaching
           <Sel label="Fitness Level" value={form.fitness_level} onChange={v => set("fitness_level", v)} options={FITNESS_LEVELS} />
           <Sel label="Equipment"     value={form.equipment}     onChange={v => set("equipment", v)}     options={EQUIPMENT} />
           <Sel label="Days per Week" value={String(form.days_per_week)} onChange={v => set("days_per_week", +v)} options={["3","4","5","6"]} />
+          <Sel label="Session Duration" value={String(form.session_duration)} onChange={v => set("session_duration", +v)} options={["30","45","60","75","90","120"]} optionLabels={["30 min","45 min","60 min","75 min","90 min","2 hours"]} />
         </div>
       </Section>
 
@@ -179,8 +207,8 @@ function Field({ label, value, onChange, placeholder, type = "text", span }: {
   );
 }
 
-function Sel({ label, value, onChange, options, span }: {
-  label: string; value: string; onChange: (v: string) => void; options: string[]; span?: number;
+function Sel({ label, value, onChange, options, optionLabels, span }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[]; optionLabels?: string[]; span?: number;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 7, gridColumn: span ? `span ${span}` : undefined }}>
@@ -188,7 +216,7 @@ function Sel({ label, value, onChange, options, span }: {
       <select value={value} onChange={e => onChange(e.target.value)}
         style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "11px 14px", color: C.text, fontSize: 15, outline: "none" }}
       >
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
+        {options.map((o, i) => <option key={o} value={o}>{optionLabels?.[i] ?? o}</option>)}
       </select>
     </div>
   );
