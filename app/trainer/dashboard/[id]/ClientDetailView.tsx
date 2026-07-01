@@ -23,6 +23,9 @@ export default function ClientDetailView({ client: initial, sessions }: {
   const [activeDay, setActiveDay]     = useState(0);
   const [tab, setTab]                 = useState<"programme" | "sessions" | "profile">("programme");
   const [swappingIdx, setSwappingIdx] = useState<number | null>(null);
+  const [editingIdx, setEditingIdx]   = useState<number | null>(null);
+  const [addingEx, setAddingEx]       = useState(false);
+  const [newEx, setNewEx]             = useState({ name: "", sets: "3", reps: "10-12", rpe: "", notes: "" });
   const [sessionNote, setSessionNote] = useState("");
   const [addingNote, setAddingNote]   = useState(false);
   const [expandedEx, setExpandedEx]   = useState<number | null>(null);
@@ -52,10 +55,33 @@ export default function ClientDetailView({ client: initial, sessions }: {
     saveAndSync(prog);
   }
 
-  async function swapExercise(exIdx: number, newEx: Exercise) {
+  async function swapExercise(exIdx: number, replacement: Exercise) {
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
-    prog.weeklyStructure[activeDay].exercises[exIdx] = { ...newEx, done: false };
+    prog.weeklyStructure[activeDay].exercises[exIdx] = { ...replacement, done: false };
     setSwappingIdx(null);
+    saveAndSync(prog);
+  }
+
+  function updateExercise(exIdx: number, fields: Partial<Exercise>) {
+    const prog: Programme = JSON.parse(JSON.stringify(client.programme));
+    prog.weeklyStructure[activeDay].exercises[exIdx] = { ...prog.weeklyStructure[activeDay].exercises[exIdx], ...fields };
+    saveAndSync(prog);
+  }
+
+  function deleteExercise(exIdx: number) {
+    const prog: Programme = JSON.parse(JSON.stringify(client.programme));
+    prog.weeklyStructure[activeDay].exercises.splice(exIdx, 1);
+    setEditingIdx(null);
+    setExpandedEx(null);
+    saveAndSync(prog);
+  }
+
+  function addExercise() {
+    if (!newEx.name.trim()) return;
+    const prog: Programme = JSON.parse(JSON.stringify(client.programme));
+    prog.weeklyStructure[activeDay].exercises.push({ ...newEx, done: false });
+    setNewEx({ name: "", sets: "3", reps: "10-12", rpe: "", notes: "" });
+    setAddingEx(false);
     saveAndSync(prog);
   }
 
@@ -180,12 +206,62 @@ export default function ClientDetailView({ client: initial, sessions }: {
                   <ExerciseCard
                     key={i} ex={ex} idx={i}
                     expanded={expandedEx === i}
-                    onToggle={() => setExpandedEx(expandedEx === i ? null : i)}
+                    editing={editingIdx === i}
+                    onToggle={() => { setExpandedEx(expandedEx === i ? null : i); setEditingIdx(null); }}
                     onToggleSet={(si) => toggleSet(i, si)}
                     onWeightChange={(si, w) => updateWeight(i, si, w)}
                     onSwap={() => setSwappingIdx(i)}
+                    onEdit={() => { setEditingIdx(editingIdx === i ? null : i); setExpandedEx(null); }}
+                    onUpdate={(fields) => updateExercise(i, fields)}
+                    onDelete={() => deleteExercise(i)}
                   />
                 ))}
+
+                {/* Add Exercise */}
+                {addingEx ? (
+                  <div style={{ padding: "16px 18px", borderTop: `1px solid ${C.border}`, background: C.card }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.accent, marginBottom: 12, letterSpacing: 1 }}>ADD EXERCISE</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <input
+                        autoFocus
+                        value={newEx.name} onChange={e => setNewEx(n => ({ ...n, name: e.target.value }))}
+                        placeholder="Exercise name…"
+                        style={{ background: C.bg, border: `1px solid ${C.accent}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, outline: "none", width: "100%" }}
+                      />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+                        {[
+                          { label: "Sets", key: "sets", placeholder: "3" },
+                          { label: "Reps", key: "reps", placeholder: "10-12" },
+                          { label: "RPE", key: "rpe", placeholder: "7" },
+                          { label: "Notes", key: "notes", placeholder: "Cue…" },
+                        ].map(({ label, key, placeholder }) => (
+                          <div key={key}>
+                            <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+                            <input
+                              value={(newEx as Record<string, string>)[key]}
+                              onChange={e => setNewEx(n => ({ ...n, [key]: e.target.value }))}
+                              placeholder={placeholder}
+                              onKeyDown={e => e.key === "Enter" && addExercise()}
+                              style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px", color: C.text, fontSize: 13, outline: "none", width: "100%" }}
+                              onFocus={e => (e.target.style.borderColor = C.accent)}
+                              onBlur={e => (e.target.style.borderColor = C.border)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                        <button onClick={addExercise} style={{ background: C.accent, color: "#000", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: 700, fontSize: 13 }}>Add</button>
+                        <button onClick={() => { setAddingEx(false); setNewEx({ name: "", sets: "3", reps: "10-12", rpe: "", notes: "" }); }} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, padding: "8px 18px", fontSize: 13 }}>Cancel</button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: "12px 18px", borderTop: `1px solid ${C.border}` }}>
+                    <button onClick={() => setAddingEx(true)} style={{ background: "transparent", border: `1px dashed ${C.border}`, borderRadius: 8, color: C.muted, padding: "8px 16px", fontSize: 13, fontWeight: 600, width: "100%" }}>
+                      + Add Exercise
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -270,50 +346,45 @@ export default function ClientDetailView({ client: initial, sessions }: {
 
 // ── Exercise card with per-set weight tracking ─────────────────────────────
 
-function ExerciseCard({ ex, idx, expanded, onToggle, onToggleSet, onWeightChange, onSwap }: {
-  ex: Exercise; idx: number; expanded: boolean;
+function ExerciseCard({ ex, idx, expanded, editing, onToggle, onToggleSet, onWeightChange, onSwap, onEdit, onUpdate, onDelete }: {
+  ex: Exercise; idx: number; expanded: boolean; editing: boolean;
   onToggle: () => void;
   onToggleSet: (setIdx: number) => void;
   onWeightChange: (setIdx: number, weight: string) => void;
   onSwap: () => void;
+  onEdit: () => void;
+  onUpdate: (fields: Partial<Exercise>) => void;
+  onDelete: () => void;
 }) {
   const setLogs = initSetLogs(ex);
   const doneSets = setLogs.filter(s => s.done).length;
   const allDone  = doneSets === setLogs.length;
 
   return (
-    <div style={{
-      borderBottom: `1px solid ${C.border}`,
-      background: allDone ? `${C.accent}08` : "transparent",
-      transition: "background .3s",
-    }}>
+    <div style={{ borderBottom: `1px solid ${C.border}`, background: editing ? `${C.accent}05` : allDone ? `${C.accent}08` : "transparent", transition: "background .3s" }}>
       {/* Header row */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", cursor: "pointer" }}
-        onClick={onToggle}
-      >
-        {/* Done indicator */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", cursor: "pointer" }} onClick={onToggle}>
         <div style={{
           width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
           background: allDone ? C.accent : "transparent",
           border: `2px solid ${allDone ? C.accent : C.border}`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 13, color: allDone ? "#000" : C.muted, fontWeight: 700,
-          transition: "all .2s",
+          fontSize: 13, color: allDone ? "#000" : C.muted, fontWeight: 700, transition: "all .2s",
         }}>
           {allDone ? "✓" : `${doneSets}/${setLogs.length}`}
         </div>
-
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: allDone ? C.muted : C.text, textDecoration: allDone ? "line-through" : "none" }}>
-            {ex.name}
-          </div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: allDone ? C.muted : C.text, textDecoration: allDone ? "line-through" : "none" }}>{ex.name}</div>
           <div style={{ fontSize: 12, color: C.muted, fontFamily: "JetBrains Mono", marginTop: 2 }}>
             {ex.sets} sets × {ex.reps}{ex.rpe ? ` · RPE ${ex.rpe}` : ""}
           </div>
           {ex.notes && <div style={{ fontSize: 12, color: C.blue, marginTop: 3 }}>{ex.notes}</div>}
         </div>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <button onClick={e => { e.stopPropagation(); onEdit(); }} style={{
+            background: editing ? C.accent : "transparent", border: `1px solid ${editing ? C.accent : C.border}`,
+            borderRadius: 8, color: editing ? "#000" : C.muted, padding: "5px 10px", fontSize: 12, fontWeight: 600,
+          }}>✏️ Edit</button>
           <button onClick={e => { e.stopPropagation(); onSwap(); }} style={{
             background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8,
             color: C.muted, padding: "5px 10px", fontSize: 12, fontWeight: 600,
@@ -322,8 +393,38 @@ function ExerciseCard({ ex, idx, expanded, onToggle, onToggleSet, onWeightChange
         </div>
       </div>
 
+      {/* Edit mode */}
+      {editing && (
+        <div style={{ padding: "0 18px 16px 58px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+            {([
+              { label: "Exercise Name", key: "name", span: true },
+              { label: "Sets", key: "sets" },
+              { label: "Reps", key: "reps" },
+              { label: "RPE", key: "rpe" },
+              { label: "Coaching Notes", key: "notes", span: true },
+            ] as { label: string; key: keyof Exercise; span?: boolean }[]).map(({ label, key, span }) => (
+              <div key={key} style={{ gridColumn: span ? "1 / -1" : undefined }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+                <input
+                  value={String(ex[key] ?? "")}
+                  onChange={e => onUpdate({ [key]: e.target.value })}
+                  placeholder={label}
+                  style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px", color: C.text, fontSize: 13, outline: "none", width: "100%" }}
+                  onFocus={e => (e.target.style.borderColor = C.accent)}
+                  onBlur={e => (e.target.style.borderColor = C.border)}
+                />
+              </div>
+            ))}
+          </div>
+          <button onClick={onDelete} style={{ background: "transparent", border: `1px solid ${C.danger}44`, borderRadius: 8, color: C.danger, padding: "6px 14px", fontSize: 12, fontWeight: 600 }}>
+            🗑 Remove Exercise
+          </button>
+        </div>
+      )}
+
       {/* Expanded set rows */}
-      {expanded && (
+      {expanded && !editing && (
         <div style={{ padding: "0 18px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "grid", gridTemplateColumns: "32px 1fr 120px 80px", gap: 8, marginBottom: 4, paddingLeft: 40 }}>
             <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>SET</span>
@@ -340,21 +441,13 @@ function ExerciseCard({ ex, idx, expanded, onToggle, onToggleSet, onWeightChange
               border: `1px solid ${s.done ? `${C.accent}33` : "transparent"}`,
               transition: "all .2s",
             }}>
-              <span style={{ fontFamily: "JetBrains Mono", fontSize: 13, color: C.muted, fontWeight: 700 }}>
-                {si + 1}
-              </span>
-              <span style={{ fontSize: 13, color: C.muted, fontFamily: "JetBrains Mono" }}>
-                {ex.reps}{ex.rpe ? ` @RPE${ex.rpe}` : ""}
-              </span>
+              <span style={{ fontFamily: "JetBrains Mono", fontSize: 13, color: C.muted, fontWeight: 700 }}>{si + 1}</span>
+              <span style={{ fontSize: 13, color: C.muted, fontFamily: "JetBrains Mono" }}>{ex.reps}{ex.rpe ? ` @RPE${ex.rpe}` : ""}</span>
               <input
                 type="number" value={s.weight} placeholder="e.g. 60"
                 onChange={e => onWeightChange(si, e.target.value)}
                 onClick={e => e.stopPropagation()}
-                style={{
-                  background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8,
-                  padding: "6px 10px", color: C.text, fontSize: 13,
-                  outline: "none", width: "100%", fontFamily: "JetBrains Mono",
-                }}
+                style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "JetBrains Mono" }}
                 onFocus={e => (e.target.style.borderColor = C.accent)}
                 onBlur={e  => (e.target.style.borderColor = C.border)}
               />
