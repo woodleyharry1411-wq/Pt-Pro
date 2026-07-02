@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { C } from "@/lib/colours";
-import { updateProgramme, logSession } from "@/lib/actions";
-import type { Client, ClientSession, Exercise, SetLog, Programme } from "@/lib/types";
+import { updateProgramme, logSession, updateClient, saveFeedback, deleteFeedback } from "@/lib/actions";
+import type { Client, ClientSession, ClientFeedback, Exercise, SetLog, Programme } from "@/lib/types";
 
 const bmi = (w: number, h: number) => (w / (h / 100) ** 2).toFixed(1);
 
@@ -14,14 +14,20 @@ function initSetLogs(ex: Exercise): SetLog[] {
   return Array.from({ length: count }, (_, i) => ex.setLogs?.[i] ?? { weight: "", reps_done: "", done: false });
 }
 
-export default function ClientDetailView({ client: initial, sessions }: {
+export default function ClientDetailView({ client: initial, sessions, feedback: initialFeedback }: {
   client: Client;
   sessions: ClientSession[];
+  feedback: ClientFeedback[];
 }) {
   const router = useRouter();
   const [client, setClient]           = useState(initial);
   const [activeDay, setActiveDay]     = useState(0);
-  const [tab, setTab]                 = useState<"programme" | "sessions" | "profile">("programme");
+  const [tab, setTab]                 = useState<"programme" | "sessions" | "profile" | "feedback">("programme");
+  const [feedback, setFeedback]       = useState(initialFeedback);
+  const [newFeedback, setNewFeedback] = useState("");
+  const [savingFeedback, setSavingFeedback] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft]     = useState<Partial<Client>>({});
   const [swappingIdx, setSwappingIdx] = useState<number | null>(null);
   const [editingIdx, setEditingIdx]   = useState<number | null>(null);
   const [addingEx, setAddingEx]       = useState(false);
@@ -93,6 +99,37 @@ export default function ClientDetailView({ client: initial, sessions }: {
     saveAndSync(prog);
   }
 
+  async function submitFeedback() {
+    if (!newFeedback.trim()) return;
+    setSavingFeedback(true);
+    await saveFeedback(client.id, newFeedback.trim());
+    setFeedback(f => [{ id: Date.now().toString(), client_id: client.id, trainer_id: "", message: newFeedback.trim(), created_at: new Date().toISOString() }, ...f]);
+    setNewFeedback("");
+    setSavingFeedback(false);
+  }
+
+  async function removeFeedback(id: string) {
+    await deleteFeedback(id, client.id);
+    setFeedback(f => f.filter(fb => fb.id !== id));
+  }
+
+  async function saveProfile() {
+    await updateClient(client.id, profileDraft);
+    setClient(c => ({ ...c, ...profileDraft }));
+    setEditingProfile(false);
+    setProfileDraft({});
+  }
+
+  function startEditProfile() {
+    setProfileDraft({
+      age: client.age, weight: client.weight, height: client.height,
+      gender: client.gender, goal: client.goal, fitness_level: client.fitness_level,
+      equipment: client.equipment, days_per_week: client.days_per_week,
+      session_duration: client.session_duration, injuries: client.injuries, notes: client.notes,
+    });
+    setEditingProfile(true);
+  }
+
   async function saveSession() {
     await logSession(client.id, day?.label ?? "", sessionNote);
     setSessionNote("");
@@ -146,7 +183,7 @@ export default function ClientDetailView({ client: initial, sessions }: {
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 24, background: C.card, borderRadius: 14, padding: 4, width: "fit-content" }}>
-        {(["programme", "sessions", "profile"] as const).map(t => (
+        {(["programme", "sessions", "profile", "feedback"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             background: tab === t ? C.accent : "transparent",
             color: tab === t ? "#000" : C.muted,
@@ -319,22 +356,124 @@ export default function ClientDetailView({ client: initial, sessions }: {
 
       {/* ── PROFILE ── */}
       {tab === "profile" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          {([
-            ["Age", `${client.age} years`], ["Weight", `${client.weight} kg`],
-            ["Height", `${client.height} cm`], ["Gender", client.gender],
-            ["Equipment", client.equipment], ["Goal", client.goal],
-            ["Fitness Level", client.fitness_level], ["Days/Week", String(client.days_per_week)],
-          ] as [string, string][]).map(([k, v]) => (
-            <div key={k} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px" }}>
-              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 4, letterSpacing: .5 }}>{k.toUpperCase()}</div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{v}</div>
+        <div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+            {editingProfile ? (
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn onClick={saveProfile}>Save Changes</Btn>
+                <Btn variant="ghost" onClick={() => { setEditingProfile(false); setProfileDraft({}); }}>Cancel</Btn>
+              </div>
+            ) : (
+              <Btn onClick={startEditProfile}>✏️ Edit Profile</Btn>
+            )}
+          </div>
+
+          {editingProfile ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {([
+                { label: "Age", key: "age", type: "number" },
+                { label: "Weight (kg)", key: "weight", type: "number" },
+                { label: "Height (cm)", key: "height", type: "number" },
+                { label: "Gender", key: "gender", type: "text" },
+                { label: "Goal", key: "goal", type: "text" },
+                { label: "Fitness Level", key: "fitness_level", type: "text" },
+                { label: "Equipment", key: "equipment", type: "text" },
+                { label: "Days/Week", key: "days_per_week", type: "number" },
+                { label: "Session Duration (min)", key: "session_duration", type: "number" },
+              ] as { label: string; key: keyof typeof profileDraft; type: string }[]).map(({ label, key, type }) => (
+                <div key={key} style={{ background: C.card, border: `1px solid ${C.accent}40`, borderRadius: 14, padding: "14px 18px" }}>
+                  <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginBottom: 6, letterSpacing: .5 }}>{label.toUpperCase()}</div>
+                  <input
+                    type={type}
+                    value={String(profileDraft[key] ?? "")}
+                    onChange={e => setProfileDraft(d => ({ ...d, [key]: type === "number" ? +e.target.value : e.target.value }))}
+                    style={{ background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 15, fontWeight: 700, width: "100%", fontFamily: "inherit" }}
+                  />
+                </div>
+              ))}
+              <div style={{ gridColumn: "1/-1", background: C.card, border: `1px solid ${C.warn}44`, borderRadius: 14, padding: "14px 18px" }}>
+                <div style={{ fontSize: 11, color: C.warn, fontWeight: 700, marginBottom: 6 }}>INJURIES / LIMITATIONS</div>
+                <textarea
+                  value={String(profileDraft.injuries ?? "")}
+                  onChange={e => setProfileDraft(d => ({ ...d, injuries: e.target.value }))}
+                  rows={2}
+                  style={{ background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 14, width: "100%", resize: "vertical", fontFamily: "inherit" }}
+                />
+              </div>
+              <div style={{ gridColumn: "1/-1", background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px" }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 6 }}>TRAINER NOTES</div>
+                <textarea
+                  value={String(profileDraft.notes ?? "")}
+                  onChange={e => setProfileDraft(d => ({ ...d, notes: e.target.value }))}
+                  rows={2}
+                  style={{ background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 14, width: "100%", resize: "vertical", fontFamily: "inherit" }}
+                />
+              </div>
             </div>
-          ))}
-          {client.injuries && (
-            <div style={{ gridColumn: "1/-1", background: C.card, border: `1px solid ${C.warn}44`, borderRadius: 14, padding: "14px 18px" }}>
-              <div style={{ fontSize: 11, color: C.warn, fontWeight: 700, marginBottom: 4 }}>INJURIES / LIMITATIONS</div>
-              <div style={{ fontSize: 14, lineHeight: 1.6 }}>{client.injuries}</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {([
+                ["Age", `${client.age} years`], ["Weight", `${client.weight} kg`],
+                ["Height", `${client.height} cm`], ["Gender", client.gender],
+                ["Equipment", client.equipment], ["Goal", client.goal],
+                ["Fitness Level", client.fitness_level], ["Days/Week", `${client.days_per_week} days`],
+                ["Session Duration", `${client.session_duration ?? 60} min`],
+              ] as [string, string][]).map(([k, v]) => (
+                <div key={k} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px" }}>
+                  <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 4, letterSpacing: .5 }}>{k.toUpperCase()}</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{v}</div>
+                </div>
+              ))}
+              {client.injuries && (
+                <div style={{ gridColumn: "1/-1", background: C.card, border: `1px solid ${C.warn}44`, borderRadius: 14, padding: "14px 18px" }}>
+                  <div style={{ fontSize: 11, color: C.warn, fontWeight: 700, marginBottom: 4 }}>INJURIES / LIMITATIONS</div>
+                  <div style={{ fontSize: 14, lineHeight: 1.6 }}>{client.injuries}</div>
+                </div>
+              )}
+              {client.notes && (
+                <div style={{ gridColumn: "1/-1", background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px" }}>
+                  <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginBottom: 4 }}>TRAINER NOTES</div>
+                  <div style={{ fontSize: 14, lineHeight: 1.6, color: C.muted }}>{client.notes}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── FEEDBACK ── */}
+      {tab === "feedback" && (
+        <div>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>SEND FEEDBACK TO CLIENT</div>
+            <textarea
+              value={newFeedback}
+              onChange={e => setNewFeedback(e.target.value)}
+              placeholder="Write feedback, progress notes, encouragement or corrections for your client…"
+              rows={3}
+              style={{ width: "100%", background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 16px", color: C.text, fontSize: 14, outline: "none", resize: "vertical", fontFamily: "inherit", marginBottom: 10 }}
+              onFocus={e => (e.target.style.borderColor = C.accent)}
+              onBlur={e => (e.target.style.borderColor = C.border)}
+            />
+            <Btn onClick={submitFeedback}>{savingFeedback ? "Sending…" : "Send Feedback"}</Btn>
+          </div>
+
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 12 }}>
+            FEEDBACK HISTORY ({feedback.length})
+          </div>
+          {feedback.length === 0 ? (
+            <div style={{ color: C.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>No feedback sent yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {feedback.map(fb => (
+                <div key={fb.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, color: C.muted }}>{new Date(fb.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                    <button onClick={() => removeFeedback(fb.id)} style={{ background: "transparent", border: "none", color: C.danger, fontSize: 12, cursor: "pointer", opacity: 0.6 }}>✕ Delete</button>
+                  </div>
+                  <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7 }}>{fb.message}</p>
+                </div>
+              ))}
             </div>
           )}
         </div>

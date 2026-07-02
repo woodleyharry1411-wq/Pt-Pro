@@ -22,5 +22,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ client: null });
   }
 
-  return NextResponse.json({ client: data });
+  const { data: feedback } = await supabase
+    .from("client_feedback")
+    .select("id, message, created_at")
+    .eq("client_id", data.id)
+    .order("created_at", { ascending: false });
+
+  return NextResponse.json({ client: { ...data, feedback: feedback ?? [] } });
 }

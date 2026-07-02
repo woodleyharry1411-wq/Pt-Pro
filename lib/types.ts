@@ -51,3 +51,11 @@ export interface ClientSession {
   note?: string
   created_at: string
 }
+
+export interface ClientFeedback {
+  id: string
+  client_id: string
+  trainer_id: string
+  message: string
+  created_at: string
+}

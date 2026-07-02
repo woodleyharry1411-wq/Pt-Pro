@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { C } from "@/lib/colours";
+import { LogoIcon } from "@/components/Logo";
 import type { Programme, ProgrammeDay, SetLog } from "@/lib/types";
 
 function initSetLogs(sets: string, existing?: SetLog[]): SetLog[] {
@@ -10,7 +11,8 @@ function initSetLogs(sets: string, existing?: SetLog[]): SetLog[] {
   return Array.from({ length: count }, (_, i) => existing?.[i] ?? { weight: "", reps_done: "", done: false });
 }
 
-type ClientData = { id: string; name: string; programme?: Programme };
+type FeedbackItem = { id: string; message: string; created_at: string };
+type ClientData = { id: string; name: string; programme?: Programme; feedback?: FeedbackItem[] };
 
 export default function ClientPortal() {
   const [name, setName]             = useState("");
@@ -19,6 +21,7 @@ export default function ClientPortal() {
   const [loading, setLoading]       = useState(false);
   const [activeDay, setActiveDay]   = useState(0);
   const [expandedEx, setExpandedEx] = useState<number | null>(null);
+  const [clientTab, setClientTab]   = useState<"programme" | "feedback">("programme");
 
   async function search() {
     if (!name.trim()) return;
@@ -78,6 +81,37 @@ export default function ClientPortal() {
     <div style={{ minHeight: "100vh", background: C.bg }}>
       <Header onSwitch={() => { setClient(null); setSearched(false); setName(""); }} clientName={client.name} />
       <div className="page-padding" style={{ maxWidth: 680, margin: "0 auto", animation: "fadeIn .3s ease" }}>
+
+        {/* Tab bar */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 20, background: C.card, borderRadius: 12, padding: 4, width: "fit-content" }}>
+          {(["programme", "feedback"] as const).map(t => (
+            <button key={t} onClick={() => setClientTab(t)} style={{
+              background: clientTab === t ? C.accent : "transparent",
+              color: clientTab === t ? "#fff" : C.muted,
+              border: "none", borderRadius: 9, padding: "8px 18px",
+              fontWeight: 700, fontSize: 13, cursor: "pointer", textTransform: "capitalize",
+              fontFamily: "Saira, sans-serif", letterSpacing: 0.5,
+            }}>{t === "feedback" ? `Feedback${client.feedback?.length ? ` (${client.feedback.length})` : ""}` : "Programme"}</button>
+          ))}
+        </div>
+
+        {/* Feedback tab */}
+        {clientTab === "feedback" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {!client.feedback?.length ? (
+              <div style={{ textAlign: "center", padding: "60px 0", color: C.muted, fontSize: 15 }}>No feedback from your trainer yet.</div>
+            ) : client.feedback.map(fb => (
+              <div key={fb.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px" }}>
+                <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, letterSpacing: 1, marginBottom: 8, fontFamily: "Saira, sans-serif" }}>
+                  {new Date(fb.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                </div>
+                <p style={{ fontSize: 15, color: C.text, lineHeight: 1.7 }}>{fb.message}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {clientTab === "programme" && <>
 
         {/* Programme summary */}
         {client.programme?.summary && (
@@ -234,6 +268,7 @@ export default function ClientPortal() {
             <div style={{ color: C.muted, fontSize: 13, marginTop: 6 }}>Great work today. Your trainer can see your progress.</div>
           </div>
         )}
+        </>}
       </div>
     </div>
   );
@@ -244,7 +279,7 @@ export default function ClientPortal() {
       <SearchHeader />
       <div className="page-padding" style={{ maxWidth: 420, margin: "0 auto", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", animation: "fadeUp .4s ease" }}>
         <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <Logo size={64} style={{ margin: "0 auto 20px" }} />
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}><LogoIcon size={64} /></div>
           <h1 className="saira" style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.5, marginBottom: 8 }}>Your Programme</h1>
           <p style={{ color: C.muted, fontSize: 15, lineHeight: 1.6 }}>Enter your name to view your personalised training plan</p>
         </div>
@@ -274,25 +309,6 @@ export default function ClientPortal() {
   );
 }
 
-function Logo({ size = 32, style }: { size?: number; style?: React.CSSProperties }) {
-  return (
-    <div style={{ width: size, height: size, ...style }}>
-      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" width={size} height={size}>
-        <rect width="64" height="64" rx="14" fill="#0F1120"/>
-        <path d="M14 48V16H34C40 16 44 20 44 26C44 32 40 36 34 36H24V48H14Z" fill="white"/>
-        <path d="M14 48V16H34C40 16 44 20 44 26C44 32 40 36 34 36H24V48H14Z" fill="url(#pGrad)" fillOpacity="0.9"/>
-        <path d="M36 36L48 48" stroke="#3B6EF8" strokeWidth="8" strokeLinecap="round"/>
-        <defs>
-          <linearGradient id="pGrad" x1="14" y1="16" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-            <stop stopColor="white"/>
-            <stop offset="1" stopColor="#3B6EF8"/>
-          </linearGradient>
-        </defs>
-      </svg>
-    </div>
-  );
-}
-
 function Header({ clientName, onSwitch }: { clientName: string; onSwitch: () => void }) {
   return (
     <header style={{
@@ -301,8 +317,8 @@ function Header({ clientName, onSwitch }: { clientName: string; onSwitch: () => 
       display: "flex", alignItems: "center", justifyContent: "space-between", height: 60,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Logo size={32} />
-        <span className="saira" style={{ fontWeight: 800, fontSize: 15, letterSpacing: 1, textTransform: "uppercase" }}>PT Pro</span>
+        <LogoIcon size={32} />
+        <span className="saira" style={{ fontWeight: 800, fontSize: 15, letterSpacing: 1, textTransform: "uppercase" }}>PT <span style={{ color: C.accent }}>PRO</span></span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ textAlign: "right" }}>
@@ -325,8 +341,8 @@ function SearchHeader() {
       padding: "0 20px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 60,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Logo size={32} />
-        <span className="saira" style={{ fontWeight: 800, fontSize: 15, letterSpacing: 1, textTransform: "uppercase" }}>PT Pro</span>
+        <LogoIcon size={32} />
+        <span className="saira" style={{ fontWeight: 800, fontSize: 15, letterSpacing: 1, textTransform: "uppercase" }}>PT <span style={{ color: C.accent }}>PRO</span></span>
       </div>
       <a href="/trainer/login" style={{ fontSize: 13, color: C.muted, textDecoration: "none", fontWeight: 600 }}>Trainer →</a>
     </header>

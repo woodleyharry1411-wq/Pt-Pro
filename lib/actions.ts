@@ -4,6 +4,29 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { Client, Programme } from "./types";
 
+export async function updateClient(clientId: string, data: Partial<Omit<Client, "id" | "trainer_id" | "created_at" | "programme">>) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("clients").update(data).eq("id", clientId);
+  if (error) throw error;
+  revalidatePath(`/trainer/dashboard/${clientId}`);
+}
+
+export async function saveFeedback(clientId: string, message: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase.from("client_feedback").insert({ client_id: clientId, trainer_id: user.id, message });
+  if (error) throw error;
+  revalidatePath(`/trainer/dashboard/${clientId}`);
+}
+
+export async function deleteFeedback(feedbackId: string, clientId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("client_feedback").delete().eq("id", feedbackId);
+  if (error) throw error;
+  revalidatePath(`/trainer/dashboard/${clientId}`);
+}
+
 export async function saveClient(data: Omit<Client, "id" | "trainer_id" | "created_at">) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
