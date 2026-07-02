@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { C } from "@/lib/colours";
-import { LogoIcon } from "@/components/Logo";
+import { LogoIcon, LogoFull } from "@/components/Logo";
 import type { Programme, ProgrammeDay, SetLog } from "@/lib/types";
 
 function initSetLogs(sets: string, existing?: SetLog[]): SetLog[] {
@@ -330,8 +330,9 @@ export default function ClientPortal() {
       <SearchHeader />
       <div className="page-padding" style={{ maxWidth: 420, margin: "0 auto", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", animation: "fadeUp .4s ease" }}>
         <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}><LogoIcon size={64} /></div>
-          <h1 className="saira" style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.5, marginBottom: 8 }}>Your Programme</h1>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
+            <LogoFull height={64} />
+          </div>
           <p style={{ color: C.muted, fontSize: 15, lineHeight: 1.6 }}>Enter your name to view your personalised training plan</p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
