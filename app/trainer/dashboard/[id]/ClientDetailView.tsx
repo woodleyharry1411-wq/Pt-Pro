@@ -355,7 +355,7 @@ export default function ClientDetailView({ client: initial, sessions }: {
 
 // ── Exercise card with per-set weight tracking ─────────────────────────────
 
-function ExerciseCard({ ex, idx, expanded, editing, onToggle, onToggleSet, onWeightChange, onSwap, onEdit, onUpdate, onDelete }: {
+function ExerciseCard({ ex, idx, expanded, editing, onToggle, onToggleSet, onWeightChange, onRepsDoneChange, onSwap, onEdit, onUpdate, onDelete }: {
   ex: Exercise; idx: number; expanded: boolean; editing: boolean;
   onToggle: () => void;
   onToggleSet: (setIdx: number) => void;
