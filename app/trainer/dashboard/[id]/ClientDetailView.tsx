@@ -8,6 +8,9 @@ import type { Client, ClientSession, ClientFeedback, Exercise, SetLog, Programme
 
 const bmi = (w: number, h: number) => (w / (h / 100) ** 2).toFixed(1);
 
+const CARDIO_KW = ["run", "bike", "cycl", "swim", "row", "cardio", "treadmill", "elliptic", "walk", "jog", "sprint", "hiit", "skip", "jump rope", "stair", "rower"];
+const isCardio = (name: string) => CARDIO_KW.some(k => name.toLowerCase().includes(k));
+
 function initSetLogs(ex: Exercise): SetLog[] {
   const count = parseInt(ex.sets) || 3;
   if (ex.setLogs && ex.setLogs.length === count) return ex.setLogs;
@@ -553,6 +556,7 @@ function ExerciseCard({ ex, idx, expanded, editing, onToggle, onToggleSet, onWei
   const setLogs = initSetLogs(ex);
   const doneSets = setLogs.filter(s => s.done).length;
   const allDone  = doneSets === setLogs.length;
+  const cardio   = isCardio(ex.name);
 
   return (
     <div style={{ borderBottom: `1px solid ${C.border}`, background: editing ? `${C.accent}05` : allDone ? `${C.accent}08` : "transparent", transition: "background .3s" }}>
@@ -620,8 +624,13 @@ function ExerciseCard({ ex, idx, expanded, editing, onToggle, onToggleSet, onWei
       {/* Expanded set rows */}
       {expanded && !editing && (
         <div style={{ padding: "0 18px 16px 58px", display: "flex", flexDirection: "column", gap: 6 }}>
+          {cardio && (
+            <div style={{ background: `${C.accent}10`, border: `1px solid ${C.accent}30`, borderRadius: 8, padding: "5px 10px", marginBottom: 8, fontSize: 12, color: C.accent, fontWeight: 600 }}>
+              Cardio — time (min) and distance (km)
+            </div>
+          )}
           <div className="set-grid-head">
-            {["#", "TARGET", "REPS DONE", "KG", "✓"].map(h => (
+            {["#", "TARGET", cardio ? "MIN" : "REPS", cardio ? "KM" : "KG", "✓"].map(h => (
               <span key={h} style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: .5 }}>{h}</span>
             ))}
           </div>
@@ -635,7 +644,7 @@ function ExerciseCard({ ex, idx, expanded, editing, onToggle, onToggleSet, onWei
               <span style={{ fontFamily: "JetBrains Mono", fontSize: 12, color: C.muted, fontWeight: 700 }}>{si + 1}</span>
               <span style={{ fontSize: 12, color: C.muted, fontFamily: "JetBrains Mono" }}>{ex.reps}{ex.rpe ? ` @${ex.rpe}` : ""}</span>
               <input
-                type="number" value={s.reps_done ?? ""} placeholder="—"
+                type="number" value={s.reps_done ?? ""} placeholder={cardio ? "min" : "reps"}
                 onChange={e => onRepsDoneChange(si, e.target.value)}
                 onClick={e => e.stopPropagation()}
                 style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 6px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "JetBrains Mono" }}
@@ -643,7 +652,7 @@ function ExerciseCard({ ex, idx, expanded, editing, onToggle, onToggleSet, onWei
                 onBlur={e  => (e.target.style.borderColor = C.border)}
               />
               <input
-                type="number" value={s.weight} placeholder="kg"
+                type="number" value={s.weight} placeholder={cardio ? "km" : "kg"}
                 onChange={e => onWeightChange(si, e.target.value)}
                 onClick={e => e.stopPropagation()}
                 style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 6px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "JetBrains Mono" }}

@@ -5,6 +5,9 @@ import { C } from "@/lib/colours";
 import { LogoIcon, LogoFull } from "@/components/Logo";
 import type { Programme, ProgrammeDay, SetLog } from "@/lib/types";
 
+const CARDIO_KEYWORDS = ["run", "bike", "cycl", "swim", "row", "cardio", "treadmill", "elliptic", "walk", "jog", "sprint", "hiit", "skip", "jump rope", "stair", "rower"];
+function isCardio(name: string) { return CARDIO_KEYWORDS.some(k => name.toLowerCase().includes(k)); }
+
 function initSetLogs(sets: string, existing?: SetLog[]): SetLog[] {
   const count = parseInt(sets) || 3;
   if (existing && existing.length === count) return existing;
@@ -216,6 +219,7 @@ export default function ClientPortal() {
               const doneSets = setLogs.filter(s => s.done).length;
               const allDone  = doneSets === setLogs.length;
               const isOpen   = expandedEx === i;
+              const cardio   = isCardio(ex.name);
 
               return (
                 <div key={i} style={{
@@ -257,9 +261,14 @@ export default function ClientPortal() {
                   {/* Expanded sets */}
                   {isOpen && (
                     <div style={{ borderTop: `1px solid ${C.border}`, padding: "12px 16px 16px" }}>
+                      {cardio && (
+                        <div style={{ background: `${C.accent}10`, border: `1px solid ${C.accent}30`, borderRadius: 8, padding: "6px 12px", marginBottom: 10, fontSize: 12, color: C.accent, fontWeight: 600 }}>
+                          Cardio — track your time and distance
+                        </div>
+                      )}
                       {/* Column headers */}
                       <div style={{ display: "grid", gridTemplateColumns: "28px 1fr 80px 80px 36px", gap: 6, marginBottom: 8 }}>
-                        {["SET", "TARGET", "REPS", "KG", "✓"].map(h => (
+                        {["SET", "TARGET", cardio ? "MIN" : "REPS", cardio ? "KM" : "KG", "✓"].map(h => (
                           <span key={h} style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: 0.8, fontFamily: "Saira, sans-serif" }}>{h}</span>
                         ))}
                       </div>
@@ -275,7 +284,8 @@ export default function ClientPortal() {
                           <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: C.muted, fontWeight: 700 }}>{si + 1}</span>
                           <span style={{ fontSize: 12, color: C.muted, fontFamily: "JetBrains Mono, monospace" }}>{ex.reps}</span>
                           <input
-                            type="number" value={s.reps_done ?? ""} placeholder="—"
+                            type="number" value={s.reps_done ?? ""}
+                            placeholder={cardio ? "min" : "reps"}
                             onChange={e => updateRepsDone(i, si, e.target.value)}
                             onClick={e => e.stopPropagation()}
                             style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "5px 8px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "JetBrains Mono, monospace", textAlign: "center" }}
@@ -283,7 +293,8 @@ export default function ClientPortal() {
                             onBlur={e  => (e.target.style.borderColor = C.border)}
                           />
                           <input
-                            type="number" value={s.weight} placeholder="0"
+                            type="number" value={s.weight}
+                            placeholder={cardio ? "km" : "kg"}
                             onChange={e => updateWeight(i, si, e.target.value)}
                             onClick={e => e.stopPropagation()}
                             style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "5px 8px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "JetBrains Mono, monospace", textAlign: "center" }}
@@ -312,13 +323,46 @@ export default function ClientPortal() {
         )}
 
         {/* Session complete */}
-        {pct === 100 && (
-          <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${C.accent}18, ${C.accent}08)`, border: `1px solid ${C.accent}40`, borderRadius: 16, padding: 24, textAlign: "center" }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>🏆</div>
-            <div style={{ fontWeight: 800, fontSize: 18, color: C.accent, fontFamily: "Saira, sans-serif", letterSpacing: 0.5 }}>Session Complete</div>
-            <div style={{ color: C.muted, fontSize: 13, marginTop: 6 }}>Great work today. Your trainer can see your progress.</div>
-          </div>
-        )}
+        {pct === 100 && (() => {
+          const allDaysComplete = days.every(d =>
+            d.exercises.length > 0 && d.exercises.every(e => e.done)
+          );
+          return allDaysComplete ? (
+            <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${C.accent}20, #7C3AED18)`, border: `1px solid ${C.accent}50`, borderRadius: 20, padding: 28, textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🏆</div>
+              <div style={{ fontWeight: 800, fontSize: 22, color: C.accent, fontFamily: "Saira, sans-serif", marginBottom: 8 }}>Programme Complete!</div>
+              <div style={{ color: C.muted, fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+                You&apos;ve finished every session this week. Incredible work — your trainer will review your progress and may update your programme for next week.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+                {[
+                  { label: "Days Done", value: days.length },
+                  { label: "Exercises", value: days.reduce((n, d) => n + d.exercises.length, 0) },
+                  { label: "Sets", value: days.reduce((n, d) => n + d.exercises.reduce((m, e) => m + (parseInt(e.sets) || 0), 0), 0) },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ background: `${C.accent}15`, borderRadius: 12, padding: "12px 8px" }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: C.accent }}>{value}</div>
+                    <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: 0.5, marginTop: 2 }}>{label.toUpperCase()}</div>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => setClientTab("feedback")}
+                style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 12, padding: "12px 24px", fontWeight: 700, fontSize: 14, fontFamily: "Saira, sans-serif", letterSpacing: 0.5 }}
+              >
+                Message Your Trainer
+              </button>
+            </div>
+          ) : (
+            <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${C.accent}18, ${C.accent}08)`, border: `1px solid ${C.accent}40`, borderRadius: 16, padding: 20, textAlign: "center" }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+              <div style={{ fontWeight: 800, fontSize: 17, color: C.accent, fontFamily: "Saira, sans-serif" }}>Session Complete!</div>
+              <div style={{ color: C.muted, fontSize: 13, marginTop: 6 }}>
+                Great work. {days.filter(d => d.exercises.length > 0 && d.exercises.every(e => e.done)).length}/{days.length} sessions done this week.
+              </div>
+            </div>
+          );
+        })()}
         </>}
       </div>
     </div>
