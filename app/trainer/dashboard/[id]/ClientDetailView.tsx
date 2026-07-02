@@ -39,7 +39,22 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
   const [addingNote, setAddingNote]   = useState(false);
   const [expandedEx, setExpandedEx]   = useState<number | null>(null);
 
-  const days = client.programme?.weeklyStructure ?? [];
+  // Multi-week support: trainer can browse any week; defaults to client's current week
+  const isMultiWeek = !!client.programme?.weeks;
+  const [viewingWeek, setViewingWeek] = useState(client.programme?.currentWeek ?? 0);
+  const currentWeekIdx = client.programme?.currentWeek ?? 0;
+
+  function getWeekDays(weekIdx: number) {
+    if (client.programme?.weeks) return client.programme.weeks[weekIdx]?.weeklyStructure ?? [];
+    return client.programme?.weeklyStructure ?? [];
+  }
+
+  function getMutableDays(prog: Programme, weekIdx: number) {
+    if (prog.weeks) return prog.weeks[weekIdx].weeklyStructure;
+    return prog.weeklyStructure!;
+  }
+
+  const days = getWeekDays(viewingWeek);
   const day  = days[activeDay];
 
   async function saveAndSync(prog: Programme) {
@@ -49,7 +64,7 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
 
   function toggleSet(exIdx: number, setIdx: number) {
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
-    const ex = prog.weeklyStructure[activeDay].exercises[exIdx];
+    const ex = getMutableDays(prog, viewingWeek)[activeDay].exercises[exIdx];
     if (!ex.setLogs) ex.setLogs = initSetLogs(ex);
     ex.setLogs[setIdx].done = !ex.setLogs[setIdx].done;
     ex.done = ex.setLogs.every(s => s.done);
@@ -58,7 +73,7 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
 
   function updateWeight(exIdx: number, setIdx: number, weight: string) {
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
-    const ex = prog.weeklyStructure[activeDay].exercises[exIdx];
+    const ex = getMutableDays(prog, viewingWeek)[activeDay].exercises[exIdx];
     if (!ex.setLogs) ex.setLogs = initSetLogs(ex);
     ex.setLogs[setIdx].weight = weight;
     saveAndSync(prog);
@@ -66,7 +81,7 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
 
   function updateRepsDone(exIdx: number, setIdx: number, reps: string) {
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
-    const ex = prog.weeklyStructure[activeDay].exercises[exIdx];
+    const ex = getMutableDays(prog, viewingWeek)[activeDay].exercises[exIdx];
     if (!ex.setLogs) ex.setLogs = initSetLogs(ex);
     ex.setLogs[setIdx].reps_done = reps;
     saveAndSync(prog);
@@ -74,20 +89,21 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
 
   async function swapExercise(exIdx: number, replacement: Exercise) {
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
-    prog.weeklyStructure[activeDay].exercises[exIdx] = { ...replacement, done: false };
+    getMutableDays(prog, viewingWeek)[activeDay].exercises[exIdx] = { ...replacement, done: false };
     setSwappingIdx(null);
     saveAndSync(prog);
   }
 
   function updateExercise(exIdx: number, fields: Partial<Exercise>) {
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
-    prog.weeklyStructure[activeDay].exercises[exIdx] = { ...prog.weeklyStructure[activeDay].exercises[exIdx], ...fields };
+    const dayExercises = getMutableDays(prog, viewingWeek)[activeDay].exercises;
+    dayExercises[exIdx] = { ...dayExercises[exIdx], ...fields };
     saveAndSync(prog);
   }
 
   function deleteExercise(exIdx: number) {
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
-    prog.weeklyStructure[activeDay].exercises.splice(exIdx, 1);
+    getMutableDays(prog, viewingWeek)[activeDay].exercises.splice(exIdx, 1);
     setEditingIdx(null);
     setExpandedEx(null);
     saveAndSync(prog);
@@ -96,7 +112,7 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
   function addExercise() {
     if (!newEx.name.trim()) return;
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
-    prog.weeklyStructure[activeDay].exercises.push({ ...newEx, done: false });
+    getMutableDays(prog, viewingWeek)[activeDay].exercises.push({ ...newEx, done: false });
     setNewEx({ name: "", sets: "3", reps: "10-12", rpe: "", notes: "" });
     setAddingEx(false);
     saveAndSync(prog);
@@ -131,6 +147,24 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
       session_duration: client.session_duration, injuries: client.injuries, notes: client.notes,
     });
     setEditingProfile(true);
+  }
+
+  async function resetWeek() {
+    const prog: Programme = JSON.parse(JSON.stringify(client.programme));
+    getMutableDays(prog, viewingWeek).forEach(day =>
+      day.exercises.forEach(ex => {
+        ex.done = false;
+        if (ex.setLogs) ex.setLogs.forEach(s => { s.done = false; s.reps_done = ""; });
+      })
+    );
+    await saveAndSync(prog);
+  }
+
+  async function setClientWeek(weekIdx: number) {
+    const prog: Programme = JSON.parse(JSON.stringify(client.programme));
+    prog.currentWeek = weekIdx;
+    await saveAndSync(prog);
+    setViewingWeek(weekIdx);
   }
 
   async function saveSession() {
@@ -208,6 +242,50 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
               <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.7 }}>{client.programme.summary}</p>
             </div>
           )}
+
+          {/* Multi-week tabs */}
+          {isMultiWeek && client.programme?.weeks && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>PROGRAMME WEEKS</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {client.programme.weeks.map((w, i) => {
+                  const isClientHere = i === currentWeekIdx;
+                  const isViewing = i === viewingWeek;
+                  return (
+                    <button key={i} onClick={() => { setViewingWeek(i); setActiveDay(0); setExpandedEx(null); }} style={{
+                      background: isViewing ? C.accent : C.card,
+                      color: isViewing ? "#000" : isClientHere ? C.accent : C.muted,
+                      border: `1px solid ${isViewing ? C.accent : isClientHere ? `${C.accent}50` : C.border}`,
+                      borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: 12,
+                      cursor: "pointer", transition: "all .15s", display: "flex", alignItems: "center", gap: 6,
+                    }}>
+                      <span>W{w.weekNumber} {w.label}</span>
+                      {isClientHere && !isViewing && <span style={{ fontSize: 9, background: `${C.accent}20`, borderRadius: 4, padding: "1px 5px", color: C.accent }}>CURRENT</span>}
+                      {isClientHere && isViewing && <span style={{ fontSize: 9, background: "#00000020", borderRadius: 4, padding: "1px 5px" }}>CURRENT</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {viewingWeek !== currentWeekIdx && (
+                <button onClick={() => setClientWeek(viewingWeek)} style={{
+                  marginTop: 8, background: "transparent", border: `1px solid ${C.accent}50`,
+                  borderRadius: 8, color: C.accent, padding: "5px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                }}>
+                  Set Week {viewingWeek + 1} as client&apos;s current week
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Reset week */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            <button onClick={resetWeek} style={{
+              background: "transparent", border: `1px solid ${C.border}`, borderRadius: 10,
+              color: C.muted, padding: "7px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}>
+              ↺ Reset Week Progress
+            </button>
+          </div>
 
           {/* Day pills */}
           <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>

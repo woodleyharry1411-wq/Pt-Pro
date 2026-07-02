@@ -20,9 +20,17 @@ export interface ProgrammeDay {
   exercises: Exercise[]
 }
 
+export interface ProgrammeWeek {
+  weekNumber: number
+  label: string  // e.g. "Foundation", "Build", "Overload", "Peak"
+  weeklyStructure: ProgrammeDay[]
+}
+
 export interface Programme {
   summary: string
-  weeklyStructure: ProgrammeDay[]
+  currentWeek?: number         // 0-based index into weeks[], default 0
+  weeks?: ProgrammeWeek[]      // multi-week format (new clients)
+  weeklyStructure?: ProgrammeDay[] // legacy single-week (existing clients)
 }
 
 export interface Client {

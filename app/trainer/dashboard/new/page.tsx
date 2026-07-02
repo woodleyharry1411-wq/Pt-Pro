@@ -46,7 +46,7 @@ export default function NewClient() {
       : "higher BMI — avoid high-impact exercises on joints, prioritise low-impact cardio and strength";
 
     const prompt = `
-You are designing a personalised training programme for this specific client. Tailor every exercise choice, set/rep scheme, and intensity to their exact profile.
+You are designing a 4-week progressive training programme for this specific client. Generate ALL 4 WEEKS in one response. Each week uses the SAME core exercises but with progressive overload — increasing intensity, weight, or volume each week.
 
 CLIENT PROFILE:
 - Name: ${form.name}, Age: ${form.age} (${ageContext}), Gender: ${form.gender}
@@ -55,27 +55,41 @@ CLIENT PROFILE:
 - Fitness Level: ${form.fitness_level}
 - Available Equipment: ${form.equipment}
 - Training Days Per Week: ${form.days_per_week}
-- Session Duration: ${form.session_duration} minutes (design the programme to fit this time)
+- Session Duration: ${form.session_duration} minutes
 - Injuries/Limitations: ${form.injuries || "None"}
 - Trainer Notes: ${form.notes || "None"}
 
+PROGRESSION SCHEME (apply to every exercise across the 4 weeks):
+- Week 1 "Foundation": 3 sets, higher reps (12-15), RPE 6 — learn the movements, build base
+- Week 2 "Build": 3 sets, moderate reps (10-12), RPE 7 — add slight weight/intensity
+- Week 3 "Overload": 4 sets, lower reps (8-10), RPE 8 — heavier loads, progressive overload
+- Week 4 "Peak": 4 sets, lowest reps (6-8), RPE 9 — maximum effort, strength peak
+
 GUIDELINES:
-- Match exercise difficulty strictly to their fitness level (${form.fitness_level})
-- For "${form.goal}" goal: choose exercises and rep ranges that directly serve this goal
-- Keep session within ${form.session_duration} minutes — adjust exercise count and rest times accordingly (45 min = 4-5 exercises, 60 min = 5-6 exercises, 90 min = 7-8 exercises)
-- Account for age ${form.age}: ${ageContext}
-- Only use equipment available: ${form.equipment}
-- If injuries listed, explicitly avoid movements that aggravate them and suggest safe alternatives
-- Rep ranges: strength = 3-5, hypertrophy = 8-12, endurance = 15-20, fat loss = 12-15 with short rest
-- Include warm-up notes in the first exercise coaching cue
-- Use specific, realistic weights or RPE targets based on their weight (${form.weight}kg) and level
+- Use the SAME exercises in all 4 weeks for each day (so client can track improvement)
+- Only change sets, reps, RPE, and coaching cues between weeks
+- Match exercise difficulty to fitness level: ${form.fitness_level}
+- Keep sessions within ${form.session_duration} minutes (45min=4 exercises, 60min=5-6, 90min=7-8)
+- Only use equipment: ${form.equipment}
+- Avoid movements that aggravate injuries: ${form.injuries || "None"}
+- Include specific coaching cues in the "notes" field
 
 Return ONLY a JSON object, no markdown:
 {
-  "summary": "3-4 sentence personalised overview mentioning their specific goal, age, fitness level, and session length",
-  "weeklyStructure": [
-    { "label": "DAY 1", "focus": "e.g. Upper Body Push",
-      "exercises": [{ "name": "...", "sets": "3", "reps": "10-12", "rpe": "7", "notes": "specific coaching cue..." }] }
+  "summary": "3-4 sentence overview of the full 4-week programme, mentioning progressive overload and their goal",
+  "currentWeek": 0,
+  "weeks": [
+    {
+      "weekNumber": 1,
+      "label": "Foundation",
+      "weeklyStructure": [
+        { "label": "DAY 1", "focus": "e.g. Upper Body Push",
+          "exercises": [{ "name": "...", "sets": "3", "reps": "12-15", "rpe": "6", "notes": "coaching cue..." }] }
+      ]
+    },
+    { "weekNumber": 2, "label": "Build", "weeklyStructure": [...] },
+    { "weekNumber": 3, "label": "Overload", "weeklyStructure": [...] },
+    { "weekNumber": 4, "label": "Peak", "weeklyStructure": [...] }
   ]
 }`;
 

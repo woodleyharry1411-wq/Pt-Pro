@@ -14,6 +14,18 @@ function initSetLogs(sets: string, existing?: SetLog[]): SetLog[] {
   return Array.from({ length: count }, (_, i) => existing?.[i] ?? { weight: "", reps_done: "", done: false });
 }
 
+// Get the active week's days — supports both multi-week and legacy single-week formats
+function getWeekDays(prog: Programme): ProgrammeDay[] {
+  if (prog.weeks) return prog.weeks[prog.currentWeek ?? 0]?.weeklyStructure ?? [];
+  return prog.weeklyStructure ?? [];
+}
+
+// Get a mutable reference to the active week's day list in a deep-copied programme
+function getMutableDays(prog: Programme): ProgrammeDay[] {
+  if (prog.weeks) return prog.weeks[prog.currentWeek ?? 0].weeklyStructure;
+  return prog.weeklyStructure!;
+}
+
 type FeedbackItem = { id: string; message: string; from_client: boolean; created_at: string };
 type ClientData = { id: string; name: string; programme?: Programme; feedback?: FeedbackItem[] };
 
@@ -54,7 +66,8 @@ export default function ClientPortal() {
 
   function toggleSet(exIdx: number, setIdx: number) {
     const prog: Programme = JSON.parse(JSON.stringify(client!.programme));
-    const ex = prog.weeklyStructure[activeDay].exercises[exIdx];
+    const days = getMutableDays(prog);
+    const ex = days[activeDay].exercises[exIdx];
     if (!ex.setLogs) ex.setLogs = initSetLogs(ex.sets, ex.setLogs);
     ex.setLogs[setIdx].done = !ex.setLogs[setIdx].done;
     ex.done = ex.setLogs.every(s => s.done);
@@ -63,10 +76,52 @@ export default function ClientPortal() {
 
   function updateWeight(exIdx: number, setIdx: number, weight: string) {
     const prog: Programme = JSON.parse(JSON.stringify(client!.programme));
-    const ex = prog.weeklyStructure[activeDay].exercises[exIdx];
+    const days = getMutableDays(prog);
+    const ex = days[activeDay].exercises[exIdx];
     if (!ex.setLogs) ex.setLogs = initSetLogs(ex.sets, ex.setLogs);
     ex.setLogs[setIdx].weight = weight;
     saveProgramme(prog);
+  }
+
+  function updateRepsDone(exIdx: number, setIdx: number, reps: string) {
+    const prog: Programme = JSON.parse(JSON.stringify(client!.programme));
+    const days = getMutableDays(prog);
+    const ex = days[activeDay].exercises[exIdx];
+    if (!ex.setLogs) ex.setLogs = initSetLogs(ex.sets, ex.setLogs);
+    ex.setLogs[setIdx].reps_done = reps;
+    saveProgramme(prog);
+  }
+
+  async function resetWeek() {
+    if (!client?.programme) return;
+    const prog: Programme = JSON.parse(JSON.stringify(client.programme));
+    getMutableDays(prog).forEach(day =>
+      day.exercises.forEach(ex => {
+        ex.done = false;
+        if (ex.setLogs) ex.setLogs.forEach(s => { s.done = false; s.reps_done = ""; });
+        // keep s.weight so client can track progression
+      })
+    );
+    await saveProgramme(prog);
+    setActiveDay(0);
+  }
+
+  async function advanceWeek() {
+    if (!client?.programme?.weeks) return;
+    const prog: Programme = JSON.parse(JSON.stringify(client.programme));
+    const nextIdx = (prog.currentWeek ?? 0) + 1;
+    if (nextIdx >= prog.weeks!.length) return;
+    // Clear done state on the next week so client starts fresh (weights carried forward)
+    prog.weeks![nextIdx].weeklyStructure.forEach(day =>
+      day.exercises.forEach(ex => {
+        ex.done = false;
+        if (ex.setLogs) ex.setLogs.forEach(s => { s.done = false; s.reps_done = ""; });
+      })
+    );
+    prog.currentWeek = nextIdx;
+    await saveProgramme(prog);
+    setActiveDay(0);
+    setExpandedEx(null);
   }
 
   async function sendClientFeedback() {
@@ -82,20 +137,21 @@ export default function ClientPortal() {
     setSendingMsg(false);
   }
 
-  function updateRepsDone(exIdx: number, setIdx: number, reps: string) {
-    const prog: Programme = JSON.parse(JSON.stringify(client!.programme));
-    const ex = prog.weeklyStructure[activeDay].exercises[exIdx];
-    if (!ex.setLogs) ex.setLogs = initSetLogs(ex.sets, ex.setLogs);
-    ex.setLogs[setIdx].reps_done = reps;
-    saveProgramme(prog);
-  }
+  const prog   = client?.programme;
+  const days: ProgrammeDay[] = prog ? getWeekDays(prog) : [];
+  const day    = days[activeDay];
+  const exercises = day?.exercises ?? [];
+  const completed = exercises.filter(e => e.done).length;
+  const total     = exercises.length;
+  const pct       = total ? Math.round((completed / total) * 100) : 0;
 
-  const days: ProgrammeDay[]  = client?.programme?.weeklyStructure ?? [];
-  const day                   = days[activeDay];
-  const exercises             = day?.exercises ?? [];
-  const completed             = exercises.filter(e => e.done).length;
-  const total                 = exercises.length;
-  const pct                   = total ? Math.round((completed / total) * 100) : 0;
+  // Multi-week metadata
+  const isMultiWeek   = !!prog?.weeks;
+  const currentWeekIdx = prog?.currentWeek ?? 0;
+  const currentWeekInfo = isMultiWeek ? prog!.weeks![currentWeekIdx] : null;
+  const isLastWeek    = isMultiWeek ? currentWeekIdx >= (prog!.weeks!.length - 1) : true;
+  const nextWeekInfo  = isMultiWeek && !isLastWeek ? prog!.weeks![currentWeekIdx + 1] : null;
+  const allDaysComplete = days.length > 0 && days.every(d => d.exercises.length > 0 && d.exercises.every(e => e.done));
 
   if (client) return (
     <div style={{ minHeight: "100vh", background: C.bg }}>
@@ -118,7 +174,6 @@ export default function ClientPortal() {
         {/* Feedback tab */}
         {clientTab === "feedback" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Send message to trainer */}
             <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px" }}>
               <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, letterSpacing: 1, marginBottom: 10, fontFamily: "Saira, sans-serif" }}>MESSAGE YOUR TRAINER</div>
               <textarea
@@ -139,7 +194,6 @@ export default function ClientPortal() {
               </button>
             </div>
 
-            {/* Message thread */}
             <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, fontFamily: "Saira, sans-serif" }}>CONVERSATION</div>
             {!localFeedback.length ? (
               <div style={{ textAlign: "center", padding: "40px 0", color: C.muted, fontSize: 14 }}>No messages yet. Send your trainer a message above.</div>
@@ -166,6 +220,22 @@ export default function ClientPortal() {
         )}
 
         {clientTab === "programme" && <>
+
+        {/* Week badge for multi-week programmes */}
+        {currentWeekInfo && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <div style={{ background: `${C.accent}18`, border: `1px solid ${C.accent}35`, borderRadius: 10, padding: "6px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 10, color: C.accent, fontWeight: 700, letterSpacing: 1, fontFamily: "Saira, sans-serif" }}>WEEK {currentWeekInfo.weekNumber}</span>
+              <span style={{ width: 1, height: 12, background: `${C.accent}40` }} />
+              <span style={{ fontSize: 13, color: C.text, fontWeight: 700, fontFamily: "Saira, sans-serif" }}>{currentWeekInfo.label}</span>
+            </div>
+            {isMultiWeek && (
+              <span style={{ fontSize: 12, color: C.muted }}>
+                {currentWeekIdx + 1} of {prog!.weeks!.length} weeks
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Programme summary */}
         {client.programme?.summary && (
@@ -226,10 +296,8 @@ export default function ClientPortal() {
                   background: C.card, border: `1px solid ${allDone ? `${C.accent}40` : C.border}`,
                   borderRadius: 14, overflow: "hidden", transition: "border-color .3s",
                 }}>
-                  {/* Exercise row */}
                   <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer" }}
                     onClick={() => setExpandedEx(isOpen ? null : i)}>
-                    {/* Circle checkbox */}
                     <div style={{
                       width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
                       background: allDone ? C.accent : "transparent",
@@ -258,7 +326,6 @@ export default function ClientPortal() {
                     </svg>
                   </div>
 
-                  {/* Expanded sets */}
                   {isOpen && (
                     <div style={{ borderTop: `1px solid ${C.border}`, padding: "12px 16px 16px" }}>
                       {cardio && (
@@ -266,7 +333,6 @@ export default function ClientPortal() {
                           Cardio — track your time and distance
                         </div>
                       )}
-                      {/* Column headers */}
                       <div style={{ display: "grid", gridTemplateColumns: "28px 1fr 80px 80px 36px", gap: 6, marginBottom: 8 }}>
                         {["SET", "TARGET", cardio ? "MIN" : "REPS", cardio ? "KM" : "KG", "✓"].map(h => (
                           <span key={h} style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: 0.8, fontFamily: "Saira, sans-serif" }}>{h}</span>
@@ -322,38 +388,96 @@ export default function ClientPortal() {
           </div>
         )}
 
-        {/* Session complete */}
-        {pct === 100 && (() => {
-          const allDaysComplete = days.every(d =>
-            d.exercises.length > 0 && d.exercises.every(e => e.done)
-          );
-          return allDaysComplete ? (
-            <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${C.accent}20, #7C3AED18)`, border: `1px solid ${C.accent}50`, borderRadius: 20, padding: 28, textAlign: "center" }}>
-              <div style={{ fontSize: 48, marginBottom: 12 }}>🏆</div>
-              <div style={{ fontWeight: 800, fontSize: 22, color: C.accent, fontFamily: "Saira, sans-serif", marginBottom: 8 }}>Programme Complete!</div>
-              <div style={{ color: C.muted, fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-                You&apos;ve finished every session this week. Incredible work — your trainer will review your progress and may update your programme for next week.
+        {/* Session / Week complete */}
+        {pct === 100 && (
+          allDaysComplete ? (
+            isMultiWeek && !isLastWeek ? (
+              /* Multi-week: advance to next week */
+              <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${C.accent}20, #7C3AED18)`, border: `1px solid ${C.accent}50`, borderRadius: 20, padding: 28, textAlign: "center" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>🏆</div>
+                <div style={{ fontWeight: 800, fontSize: 22, color: C.accent, fontFamily: "Saira, sans-serif", marginBottom: 8 }}>
+                  Week {currentWeekInfo!.weekNumber} Complete!
+                </div>
+                <div style={{ color: C.muted, fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+                  Amazing work finishing the <strong style={{ color: C.text }}>{currentWeekInfo!.label}</strong> phase.
+                  You&apos;re ready to level up to <strong style={{ color: C.accent }}>Week {nextWeekInfo!.weekNumber}: {nextWeekInfo!.label}</strong>.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+                  {[
+                    { label: "Days Done", value: days.length },
+                    { label: "Exercises", value: days.reduce((n, d) => n + d.exercises.length, 0) },
+                    { label: "Sets", value: days.reduce((n, d) => n + d.exercises.reduce((m, e) => m + (parseInt(e.sets) || 0), 0), 0) },
+                  ].map(({ label, value }) => (
+                    <div key={label} style={{ background: `${C.accent}15`, borderRadius: 12, padding: "12px 8px" }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: C.accent }}>{value}</div>
+                      <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: 0.5, marginTop: 2 }}>{label.toUpperCase()}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                  <button
+                    onClick={advanceWeek}
+                    style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 12, padding: "12px 28px", fontWeight: 700, fontSize: 15, fontFamily: "Saira, sans-serif", letterSpacing: 0.5 }}
+                  >
+                    Start Week {nextWeekInfo!.weekNumber}: {nextWeekInfo!.label} →
+                  </button>
+                  <button
+                    onClick={() => setClientTab("feedback")}
+                    style={{ background: "transparent", color: C.muted, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 20px", fontWeight: 600, fontSize: 14, fontFamily: "Saira, sans-serif" }}
+                  >
+                    Message Trainer
+                  </button>
+                </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
-                {[
-                  { label: "Days Done", value: days.length },
-                  { label: "Exercises", value: days.reduce((n, d) => n + d.exercises.length, 0) },
-                  { label: "Sets", value: days.reduce((n, d) => n + d.exercises.reduce((m, e) => m + (parseInt(e.sets) || 0), 0), 0) },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ background: `${C.accent}15`, borderRadius: 12, padding: "12px 8px" }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: C.accent }}>{value}</div>
-                    <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: 0.5, marginTop: 2 }}>{label.toUpperCase()}</div>
-                  </div>
-                ))}
+            ) : (
+              /* Final week complete or legacy single-week */
+              <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${C.accent}20, #7C3AED18)`, border: `1px solid ${C.accent}50`, borderRadius: 20, padding: 28, textAlign: "center" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>🏆</div>
+                <div style={{ fontWeight: 800, fontSize: 22, color: C.accent, fontFamily: "Saira, sans-serif", marginBottom: 8 }}>
+                  {isMultiWeek ? "Programme Complete!" : "Week Complete!"}
+                </div>
+                <div style={{ color: C.muted, fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+                  {isMultiWeek
+                    ? "You've completed all 4 weeks of your programme. Incredible dedication — let your trainer know so they can build your next programme!"
+                    : "You've finished every session this week. Incredible work — your trainer will review your progress and may update your programme for next week."}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+                  {[
+                    { label: "Days Done", value: days.length },
+                    { label: "Exercises", value: days.reduce((n, d) => n + d.exercises.length, 0) },
+                    { label: "Sets", value: days.reduce((n, d) => n + d.exercises.reduce((m, e) => m + (parseInt(e.sets) || 0), 0), 0) },
+                  ].map(({ label, value }) => (
+                    <div key={label} style={{ background: `${C.accent}15`, borderRadius: 12, padding: "12px 8px" }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: C.accent }}>{value}</div>
+                      <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: 0.5, marginTop: 2 }}>{label.toUpperCase()}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => setClientTab("feedback")}
+                    style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 12, padding: "12px 24px", fontWeight: 700, fontSize: 14, fontFamily: "Saira, sans-serif", letterSpacing: 0.5 }}
+                  >
+                    Message Your Trainer
+                  </button>
+                  {!isMultiWeek && (
+                    <button
+                      onClick={resetWeek}
+                      style={{ background: "transparent", color: C.muted, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 24px", fontWeight: 700, fontSize: 14, fontFamily: "Saira, sans-serif" }}
+                    >
+                      Start New Week
+                    </button>
+                  )}
+                </div>
+                {!isMultiWeek && (
+                  <p style={{ fontSize: 11, color: C.muted, marginTop: 12 }}>
+                    Starting a new week keeps your weights from last week so you can track progression.
+                  </p>
+                )}
               </div>
-              <button
-                onClick={() => setClientTab("feedback")}
-                style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 12, padding: "12px 24px", fontWeight: 700, fontSize: 14, fontFamily: "Saira, sans-serif", letterSpacing: 0.5 }}
-              >
-                Message Your Trainer
-              </button>
-            </div>
+            )
           ) : (
+            /* Single session done */
             <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${C.accent}18, ${C.accent}08)`, border: `1px solid ${C.accent}40`, borderRadius: 16, padding: 20, textAlign: "center" }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
               <div style={{ fontWeight: 800, fontSize: 17, color: C.accent, fontFamily: "Saira, sans-serif" }}>Session Complete!</div>
@@ -361,8 +485,8 @@ export default function ClientPortal() {
                 Great work. {days.filter(d => d.exercises.length > 0 && d.exercises.every(e => e.done)).length}/{days.length} sessions done this week.
               </div>
             </div>
-          );
-        })()}
+          )
+        )}
         </>}
       </div>
     </div>
