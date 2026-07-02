@@ -146,12 +146,21 @@ export default function ClientPortal() {
   const pct       = total ? Math.round((completed / total) * 100) : 0;
 
   // Multi-week metadata
-  const isMultiWeek   = !!prog?.weeks;
+  const isMultiWeek    = !!prog?.weeks;
   const currentWeekIdx = prog?.currentWeek ?? 0;
   const currentWeekInfo = isMultiWeek ? prog!.weeks![currentWeekIdx] : null;
-  const isLastWeek    = isMultiWeek ? currentWeekIdx >= (prog!.weeks!.length - 1) : true;
-  const nextWeekInfo  = isMultiWeek && !isLastWeek ? prog!.weeks![currentWeekIdx + 1] : null;
+  const isLastWeek     = isMultiWeek ? currentWeekIdx >= (prog!.weeks!.length - 1) : true;
+  const nextWeekInfo   = isMultiWeek && !isLastWeek ? prog!.weeks![currentWeekIdx + 1] : null;
   const allDaysComplete = days.length > 0 && days.every(d => d.exercises.length > 0 && d.exercises.every(e => e.done));
+  const [advancing, setAdvancing] = useState(false);
+
+  // Auto-advance to next week when all days complete (multi-week only)
+  async function autoAdvanceWeek() {
+    if (!prog?.weeks || isLastWeek || advancing) return;
+    setAdvancing(true);
+    await advanceWeek();
+    setAdvancing(false);
+  }
 
   if (client) return (
     <div style={{ minHeight: "100vh", background: C.bg }}>
@@ -392,42 +401,23 @@ export default function ClientPortal() {
         {pct === 100 && (
           allDaysComplete ? (
             isMultiWeek && !isLastWeek ? (
-              /* Multi-week: advance to next week */
+              /* All days done — auto-advance to next week */
               <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${C.accent}20, #7C3AED18)`, border: `1px solid ${C.accent}50`, borderRadius: 20, padding: 28, textAlign: "center" }}>
                 <div style={{ fontSize: 48, marginBottom: 12 }}>🏆</div>
                 <div style={{ fontWeight: 800, fontSize: 22, color: C.accent, fontFamily: "Saira, sans-serif", marginBottom: 8 }}>
                   Week {currentWeekInfo!.weekNumber} Complete!
                 </div>
                 <div style={{ color: C.muted, fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-                  Amazing work finishing the <strong style={{ color: C.text }}>{currentWeekInfo!.label}</strong> phase.
-                  You&apos;re ready to level up to <strong style={{ color: C.accent }}>Week {nextWeekInfo!.weekNumber}: {nextWeekInfo!.label}</strong>.
+                  You&apos;ve finished the <strong style={{ color: C.text }}>{currentWeekInfo!.label}</strong> phase.
+                  Moving you on to <strong style={{ color: C.accent }}>Week {nextWeekInfo!.weekNumber}: {nextWeekInfo!.label}</strong>…
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
-                  {[
-                    { label: "Days Done", value: days.length },
-                    { label: "Exercises", value: days.reduce((n, d) => n + d.exercises.length, 0) },
-                    { label: "Sets", value: days.reduce((n, d) => n + d.exercises.reduce((m, e) => m + (parseInt(e.sets) || 0), 0), 0) },
-                  ].map(({ label, value }) => (
-                    <div key={label} style={{ background: `${C.accent}15`, borderRadius: 12, padding: "12px 8px" }}>
-                      <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: C.accent }}>{value}</div>
-                      <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: 0.5, marginTop: 2 }}>{label.toUpperCase()}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                  <button
-                    onClick={advanceWeek}
-                    style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 12, padding: "12px 28px", fontWeight: 700, fontSize: 15, fontFamily: "Saira, sans-serif", letterSpacing: 0.5 }}
-                  >
-                    Start Week {nextWeekInfo!.weekNumber}: {nextWeekInfo!.label} →
-                  </button>
-                  <button
-                    onClick={() => setClientTab("feedback")}
-                    style={{ background: "transparent", color: C.muted, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 20px", fontWeight: 600, fontSize: 14, fontFamily: "Saira, sans-serif" }}
-                  >
-                    Message Trainer
-                  </button>
-                </div>
+                {(() => { autoAdvanceWeek(); return null; })()}
+                {advancing && (
+                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, color: C.muted, fontSize: 14 }}>
+                    <div style={{ width: 18, height: 18, border: `2px solid ${C.border}`, borderTop: `2px solid ${C.accent}`, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                    Loading next week…
+                  </div>
+                )}
               </div>
             ) : (
               /* Final week complete or legacy single-week */
@@ -438,8 +428,8 @@ export default function ClientPortal() {
                 </div>
                 <div style={{ color: C.muted, fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
                   {isMultiWeek
-                    ? "You've completed all 4 weeks of your programme. Incredible dedication — let your trainer know so they can build your next programme!"
-                    : "You've finished every session this week. Incredible work — your trainer will review your progress and may update your programme for next week."}
+                    ? "You've completed all 4 weeks. Incredible dedication — message your trainer so they can build your next programme!"
+                    : "You've finished every session this week. Your trainer will review your progress and update your programme."}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
                   {[
@@ -453,31 +443,16 @@ export default function ClientPortal() {
                     </div>
                   ))}
                 </div>
-                <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                  <button
-                    onClick={() => setClientTab("feedback")}
-                    style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 12, padding: "12px 24px", fontWeight: 700, fontSize: 14, fontFamily: "Saira, sans-serif", letterSpacing: 0.5 }}
-                  >
-                    Message Your Trainer
-                  </button>
-                  {!isMultiWeek && (
-                    <button
-                      onClick={resetWeek}
-                      style={{ background: "transparent", color: C.muted, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 24px", fontWeight: 700, fontSize: 14, fontFamily: "Saira, sans-serif" }}
-                    >
-                      Start New Week
-                    </button>
-                  )}
-                </div>
-                {!isMultiWeek && (
-                  <p style={{ fontSize: 11, color: C.muted, marginTop: 12 }}>
-                    Starting a new week keeps your weights from last week so you can track progression.
-                  </p>
-                )}
+                <button
+                  onClick={() => setClientTab("feedback")}
+                  style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 12, padding: "12px 24px", fontWeight: 700, fontSize: 14, fontFamily: "Saira, sans-serif", letterSpacing: 0.5 }}
+                >
+                  Message Your Trainer
+                </button>
               </div>
             )
           ) : (
-            /* Single session done */
+            /* Single session done, not all days yet */
             <div style={{ marginTop: 20, background: `linear-gradient(135deg, ${C.accent}18, ${C.accent}08)`, border: `1px solid ${C.accent}40`, borderRadius: 16, padding: 20, textAlign: "center" }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
               <div style={{ fontWeight: 800, fontSize: 17, color: C.accent, fontFamily: "Saira, sans-serif" }}>Session Complete!</div>

@@ -418,20 +418,74 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
       {/* ── SESSIONS ── */}
       {tab === "sessions" && (
         <div>
-          <div style={{ fontSize: 14, color: C.muted, marginBottom: 16 }}>
-            {sessions.length === 0 ? "No sessions logged yet." : `${sessions.length} session${sessions.length !== 1 ? "s" : ""} logged.`}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {sessions.map(s => (
-              <div key={s.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: s.note ? 8 : 0 }}>
-                  <span style={{ fontWeight: 700, fontSize: 14 }}>{s.day_label}</span>
-                  <span style={{ fontSize: 12, color: C.muted }}>{new Date(s.created_at).toLocaleDateString()}</span>
+          {sessions.length === 0 ? (
+            <div style={{ color: C.muted, fontSize: 14, textAlign: "center", padding: "60px 0" }}>No sessions logged yet.</div>
+          ) : (() => {
+            // Group sessions by programme week if multi-week, otherwise by calendar week
+            const weeks = client.programme?.weeks;
+            if (weeks) {
+              // For multi-week programmes: bin each session by the week it falls in
+              // Sessions don't store weekNumber so we group by calendar week and label them
+              const weekMap = new Map<string, typeof sessions>();
+              sessions.forEach(s => {
+                const d = new Date(s.created_at);
+                const weekStart = new Date(d);
+                weekStart.setDate(d.getDate() - d.getDay());
+                const key = weekStart.toISOString().slice(0, 10);
+                if (!weekMap.has(key)) weekMap.set(key, []);
+                weekMap.get(key)!.push(s);
+              });
+              const calWeeks = Array.from(weekMap.entries()).sort(([a], [b]) => b.localeCompare(a));
+              // Assign programme week labels in order (earliest cal week = Week 1)
+              const reversed = [...calWeeks].reverse();
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  {reversed.map(([weekKey, weekSessions], idx) => {
+                    const progWeek = weeks[idx];
+                    const label = progWeek ? `Week ${progWeek.weekNumber}: ${progWeek.label}` : `Week ${idx + 1}`;
+                    const date = new Date(weekKey);
+                    const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+                    return (
+                      <div key={weekKey}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                          <div style={{ background: `${C.accent}18`, border: `1px solid ${C.accent}35`, borderRadius: 8, padding: "4px 12px" }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: C.accent, fontFamily: "Saira, sans-serif" }}>{label}</span>
+                          </div>
+                          <span style={{ fontSize: 12, color: C.muted }}>w/c {dateStr} · {weekSessions.length} session{weekSessions.length !== 1 ? "s" : ""}</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 8, borderLeft: `2px solid ${C.accent}30` }}>
+                          {weekSessions.map(s => (
+                            <div key={s.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 16px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: s.note ? 6 : 0 }}>
+                                <span style={{ fontWeight: 700, fontSize: 14 }}>{s.day_label}</span>
+                                <span style={{ fontSize: 12, color: C.muted }}>{new Date(s.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                              </div>
+                              {s.note && <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, margin: 0 }}>{s.note}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }).reverse()}
                 </div>
-                {s.note && <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>{s.note}</p>}
+              );
+            }
+
+            // Legacy: just flat list
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {sessions.map(s => (
+                  <div key={s.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: s.note ? 8 : 0 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{s.day_label}</span>
+                      <span style={{ fontSize: 12, color: C.muted }}>{new Date(s.created_at).toLocaleDateString()}</span>
+                    </div>
+                    {s.note && <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>{s.note}</p>}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </div>
       )}
 
