@@ -1,13 +1,13 @@
 export const C = {
-  bg:       "#0E0F14",
-  surface:  "#14151D",
-  card:     "#1C1E2A",
-  border:   "#272A3A",
-  accent:   "#00C9A0",   // teal-green — health, vitality
-  accentDim:"#009E7F",
+  bg:       "#0A0C14",
+  surface:  "#0F1120",
+  card:     "#161826",
+  border:   "#1E2238",
+  accent:   "#3B6EF8",   // electric blue
+  accentDim:"#2D5BD6",
   text:     "#F0F2FA",
-  muted:    "#737899",
+  muted:    "#6B7199",
   danger:   "#F06080",
   warn:     "#F5A623",
-  blue:     "#5B87F5",
+  blue:     "#3B6EF8",
 } as const;
