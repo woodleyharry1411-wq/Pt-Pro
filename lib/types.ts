@@ -57,5 +57,6 @@ export interface ClientFeedback {
   client_id: string
   trainer_id: string
   message: string
+  from_client: boolean
   created_at: string
 }

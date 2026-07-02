@@ -22,7 +22,7 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
   const router = useRouter();
   const [client, setClient]           = useState(initial);
   const [activeDay, setActiveDay]     = useState(0);
-  const [tab, setTab]                 = useState<"programme" | "sessions" | "profile" | "feedback">("programme");
+  const [tab, setTab]                 = useState<"programme" | "sessions" | "profile" | "feedback" | "progress">("programme");
   const [feedback, setFeedback]       = useState(initialFeedback);
   const [newFeedback, setNewFeedback] = useState("");
   const [savingFeedback, setSavingFeedback] = useState(false);
@@ -103,7 +103,7 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
     if (!newFeedback.trim()) return;
     setSavingFeedback(true);
     await saveFeedback(client.id, newFeedback.trim());
-    setFeedback(f => [{ id: Date.now().toString(), client_id: client.id, trainer_id: "", message: newFeedback.trim(), created_at: new Date().toISOString() }, ...f]);
+    setFeedback(f => [{ id: Date.now().toString(), client_id: client.id, trainer_id: "", message: newFeedback.trim(), from_client: false, created_at: new Date().toISOString() }, ...f]);
     setNewFeedback("");
     setSavingFeedback(false);
   }
@@ -182,8 +182,8 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 24, background: C.card, borderRadius: 14, padding: 4, width: "fit-content" }}>
-        {(["programme", "sessions", "profile", "feedback"] as const).map(t => (
+      <div style={{ display: "flex", gap: 4, marginBottom: 24, background: C.card, borderRadius: 14, padding: 4, flexWrap: "wrap" }}>
+        {(["programme", "sessions", "progress", "profile", "feedback"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             background: tab === t ? C.accent : "transparent",
             color: tab === t ? "#000" : C.muted,
@@ -441,11 +441,43 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
         </div>
       )}
 
+      {/* ── PROGRESS ── */}
+      {tab === "progress" && (
+        <div>
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 16 }}>
+            SESSIONS OVER TIME ({sessions.length} total)
+          </div>
+          {sessions.length < 2 ? (
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "60px 20px", textAlign: "center", color: C.muted, fontSize: 14 }}>
+              Log at least 2 sessions to see a progress chart.
+            </div>
+          ) : (
+            <ProgressChart sessions={sessions} />
+          )}
+
+          {/* Sessions per week summary */}
+          {sessions.length > 0 && (
+            <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              {[
+                { label: "Total Sessions", value: sessions.length },
+                { label: "This Month", value: sessions.filter(s => new Date(s.created_at) > new Date(Date.now() - 30 * 864e5)).length },
+                { label: "This Week", value: sessions.filter(s => new Date(s.created_at) > new Date(Date.now() - 7 * 864e5)).length },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px", textAlign: "center" }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, fontFamily: "JetBrains Mono", color: C.accent }}>{value}</div>
+                  <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, marginTop: 4, letterSpacing: 0.5 }}>{label.toUpperCase()}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── FEEDBACK ── */}
       {tab === "feedback" && (
         <div>
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>SEND FEEDBACK TO CLIENT</div>
+            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>SEND MESSAGE TO CLIENT</div>
             <textarea
               value={newFeedback}
               onChange={e => setNewFeedback(e.target.value)}
@@ -455,23 +487,36 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
               onFocus={e => (e.target.style.borderColor = C.accent)}
               onBlur={e => (e.target.style.borderColor = C.border)}
             />
-            <Btn onClick={submitFeedback}>{savingFeedback ? "Sending…" : "Send Feedback"}</Btn>
+            <Btn onClick={submitFeedback}>{savingFeedback ? "Sending…" : "Send Message"}</Btn>
           </div>
 
           <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 12 }}>
-            FEEDBACK HISTORY ({feedback.length})
+            CONVERSATION ({feedback.length})
           </div>
           {feedback.length === 0 ? (
-            <div style={{ color: C.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>No feedback sent yet.</div>
+            <div style={{ color: C.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>No messages yet.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {feedback.map(fb => (
-                <div key={fb.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px" }}>
+                <div key={fb.id} style={{
+                  background: fb.from_client ? `${C.warn}10` : C.card,
+                  border: `1px solid ${fb.from_client ? `${C.warn}33` : C.border}`,
+                  borderRadius: 14, padding: "14px 18px",
+                  marginLeft: fb.from_client ? 0 : 24,
+                  marginRight: fb.from_client ? 24 : 0,
+                }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, color: C.muted }}>{new Date(fb.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
-                    <button onClick={() => removeFeedback(fb.id)} style={{ background: "transparent", border: "none", color: C.danger, fontSize: 12, cursor: "pointer", opacity: 0.6 }}>✕ Delete</button>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: fb.from_client ? C.warn : C.accent, letterSpacing: 0.5 }}>
+                      {fb.from_client ? `${client.name.toUpperCase()} (CLIENT)` : "YOU (TRAINER)"}
+                    </span>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: C.muted }}>{new Date(fb.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                      {!fb.from_client && (
+                        <button onClick={() => removeFeedback(fb.id)} style={{ background: "transparent", border: "none", color: C.danger, fontSize: 12, cursor: "pointer", opacity: 0.6 }}>✕</button>
+                      )}
+                    </div>
                   </div>
-                  <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7 }}>{fb.message}</p>
+                  <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, margin: 0 }}>{fb.message}</p>
                 </div>
               ))}
             </div>
@@ -697,6 +742,72 @@ Return ONLY a JSON array, no markdown. Each item: { "name": string, "sets": stri
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Progress chart ─────────────────────────────────────────────────────────
+
+function ProgressChart({ sessions }: { sessions: ClientSession[] }) {
+  const sorted = [...sessions].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  // Bucket by week
+  const weekMap = new Map<string, number>();
+  sorted.forEach(s => {
+    const d = new Date(s.created_at);
+    const weekStart = new Date(d);
+    weekStart.setDate(d.getDate() - d.getDay());
+    const key = weekStart.toISOString().slice(0, 10);
+    weekMap.set(key, (weekMap.get(key) ?? 0) + 1);
+  });
+  const weeks = Array.from(weekMap.entries()).sort(([a], [b]) => a.localeCompare(b));
+  if (weeks.length === 0) return null;
+
+  const maxVal = Math.max(...weeks.map(([, v]) => v));
+  const W = 560, H = 180, padL = 28, padR = 16, padT = 20, padB = 36;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  const pts = weeks.map(([, v], i) => ({
+    x: padL + (i / Math.max(weeks.length - 1, 1)) * chartW,
+    y: padT + (1 - v / maxVal) * chartH,
+    v,
+    label: weeks[i][0].slice(5),
+  }));
+
+  const polyline = pts.map(p => `${p.x},${p.y}`).join(" ");
+  const area = `${pts[0].x},${padT + chartH} ${polyline} ${pts[pts.length - 1].x},${padT + chartH}`;
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "20px 16px 12px" }}>
+      <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, letterSpacing: 0.5, marginBottom: 12 }}>SESSIONS PER WEEK</div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", overflow: "visible" }}>
+        {/* Grid lines */}
+        {[0, 1, 2, 3].map(i => {
+          const y = padT + (i / 3) * chartH;
+          return <line key={i} x1={padL} x2={W - padR} y1={y} y2={y} stroke="#1E2238" strokeWidth={1} />;
+        })}
+        {/* Area fill */}
+        <defs>
+          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3B6EF8" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#3B6EF8" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={area} fill="url(#chartGrad)" />
+        {/* Line */}
+        <polyline points={polyline} fill="none" stroke="#3B6EF8" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+        {/* Dots + labels */}
+        {pts.map((p, i) => (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r={4} fill="#3B6EF8" stroke="#0F1120" strokeWidth={2} />
+            <text x={p.x} y={p.y - 10} textAnchor="middle" fontSize={10} fill="#F0F2FA" fontWeight="700">{p.v}</text>
+            {(i === 0 || i === pts.length - 1 || pts.length <= 8) && (
+              <text x={p.x} y={H - 4} textAnchor="middle" fontSize={9} fill="#6B7199">{p.label}</text>
+            )}
+          </g>
+        ))}
+      </svg>
     </div>
   );
 }

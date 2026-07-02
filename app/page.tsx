@@ -11,7 +11,7 @@ function initSetLogs(sets: string, existing?: SetLog[]): SetLog[] {
   return Array.from({ length: count }, (_, i) => existing?.[i] ?? { weight: "", reps_done: "", done: false });
 }
 
-type FeedbackItem = { id: string; message: string; created_at: string };
+type FeedbackItem = { id: string; message: string; from_client: boolean; created_at: string };
 type ClientData = { id: string; name: string; programme?: Programme; feedback?: FeedbackItem[] };
 
 export default function ClientPortal() {
@@ -20,8 +20,11 @@ export default function ClientPortal() {
   const [searched, setSearched]     = useState(false);
   const [loading, setLoading]       = useState(false);
   const [activeDay, setActiveDay]   = useState(0);
-  const [expandedEx, setExpandedEx] = useState<number | null>(null);
-  const [clientTab, setClientTab]   = useState<"programme" | "feedback">("programme");
+  const [expandedEx, setExpandedEx]     = useState<number | null>(null);
+  const [clientTab, setClientTab]       = useState<"programme" | "feedback">("programme");
+  const [clientMsg, setClientMsg]       = useState("");
+  const [sendingMsg, setSendingMsg]     = useState(false);
+  const [localFeedback, setLocalFeedback] = useState<FeedbackItem[]>([]);
 
   async function search() {
     if (!name.trim()) return;
@@ -29,6 +32,7 @@ export default function ClientPortal() {
     const res = await fetch(`/api/client?name=${encodeURIComponent(name.trim())}`);
     const { client } = await res.json();
     setClient(client ?? null);
+    setLocalFeedback(client?.feedback ?? []);
     setSearched(true);
     setActiveDay(0);
     setExpandedEx(null);
@@ -60,6 +64,19 @@ export default function ClientPortal() {
     if (!ex.setLogs) ex.setLogs = initSetLogs(ex.sets, ex.setLogs);
     ex.setLogs[setIdx].weight = weight;
     saveProgramme(prog);
+  }
+
+  async function sendClientFeedback() {
+    if (!clientMsg.trim() || !client) return;
+    setSendingMsg(true);
+    await fetch("/api/client/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: client.id, message: clientMsg.trim() }),
+    });
+    setLocalFeedback(f => [{ id: Date.now().toString(), message: clientMsg.trim(), from_client: true, created_at: new Date().toISOString() }, ...f]);
+    setClientMsg("");
+    setSendingMsg(false);
   }
 
   function updateRepsDone(exIdx: number, setIdx: number, reps: string) {
@@ -97,15 +114,49 @@ export default function ClientPortal() {
 
         {/* Feedback tab */}
         {clientTab === "feedback" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {!client.feedback?.length ? (
-              <div style={{ textAlign: "center", padding: "60px 0", color: C.muted, fontSize: 15 }}>No feedback from your trainer yet.</div>
-            ) : client.feedback.map(fb => (
-              <div key={fb.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px" }}>
-                <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, letterSpacing: 1, marginBottom: 8, fontFamily: "Saira, sans-serif" }}>
-                  {new Date(fb.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Send message to trainer */}
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px" }}>
+              <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, letterSpacing: 1, marginBottom: 10, fontFamily: "Saira, sans-serif" }}>MESSAGE YOUR TRAINER</div>
+              <textarea
+                value={clientMsg}
+                onChange={e => setClientMsg(e.target.value)}
+                placeholder="How did your session go? Any questions or concerns?"
+                rows={3}
+                style={{ width: "100%", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", color: C.text, fontSize: 14, outline: "none", resize: "none", fontFamily: "inherit", marginBottom: 10 }}
+                onFocus={e => (e.target.style.borderColor = C.accent)}
+                onBlur={e => (e.target.style.borderColor = C.border)}
+              />
+              <button onClick={sendClientFeedback} disabled={sendingMsg || !clientMsg.trim()} style={{
+                background: C.accent, color: "#fff", border: "none", borderRadius: 10,
+                padding: "10px 20px", fontWeight: 700, fontSize: 14, fontFamily: "Saira, sans-serif",
+                opacity: !clientMsg.trim() ? 0.5 : 1,
+              }}>
+                {sendingMsg ? "Sending…" : "Send Message"}
+              </button>
+            </div>
+
+            {/* Message thread */}
+            <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, fontFamily: "Saira, sans-serif" }}>CONVERSATION</div>
+            {!localFeedback.length ? (
+              <div style={{ textAlign: "center", padding: "40px 0", color: C.muted, fontSize: 14 }}>No messages yet. Send your trainer a message above.</div>
+            ) : localFeedback.map(fb => (
+              <div key={fb.id} style={{
+                background: fb.from_client ? `${C.accent}12` : C.card,
+                border: `1px solid ${fb.from_client ? `${C.accent}30` : C.border}`,
+                borderRadius: 14, padding: "14px 16px",
+                marginLeft: fb.from_client ? 24 : 0,
+                marginRight: fb.from_client ? 0 : 24,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: fb.from_client ? C.accent : C.muted, fontFamily: "Saira, sans-serif", letterSpacing: 0.5 }}>
+                    {fb.from_client ? "YOU" : "YOUR TRAINER"}
+                  </span>
+                  <span style={{ fontSize: 11, color: C.muted }}>
+                    {new Date(fb.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                  </span>
                 </div>
-                <p style={{ fontSize: 15, color: C.text, lineHeight: 1.7 }}>{fb.message}</p>
+                <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, margin: 0 }}>{fb.message}</p>
               </div>
             ))}
           </div>

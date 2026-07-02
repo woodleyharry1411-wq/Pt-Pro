@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
   const { data: feedback } = await supabase
     .from("client_feedback")
-    .select("id, message, created_at")
+    .select("id, message, from_client, created_at")
     .eq("client_id", data.id)
     .order("created_at", { ascending: false });
 

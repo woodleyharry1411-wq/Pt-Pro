@@ -2,18 +2,24 @@ export function LogoIcon({ size = 32 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="56" height="56" rx="10" fill="#0A0C14"/>
-      {/* P stem */}
-      <rect x="9" y="9" width="11" height="38" fill="white"/>
-      {/* P bowl — top bar */}
-      <rect x="9" y="9" width="30" height="10" fill="white"/>
-      {/* P bowl — right curve */}
-      <rect x="30" y="9" width="10" height="29" rx="5" fill="white"/>
-      {/* P bowl — bottom bar */}
-      <rect x="9" y="29" width="31" height="9" fill="white"/>
-      {/* Blue diagonal slash */}
-      <polygon points="30,9 47,9 19,47 2,47" fill="#3B6EF8"/>
-      {/* Re-draw stem on top to stay white */}
-      <rect x="9" y="9" width="11" height="38" fill="white"/>
+
+      {/* Full white P letterform */}
+      {/* Stem */}
+      <rect x="8" y="7" width="13" height="42" fill="white"/>
+      {/* Top arm */}
+      <rect x="8" y="7" width="32" height="13" fill="white"/>
+      {/* Bowl — right curved side */}
+      <rect x="33" y="7" width="14" height="27" rx="7" fill="white"/>
+      {/* Bowl — bottom crossbar */}
+      <rect x="8" y="30" width="38" height="10" fill="white"/>
+
+      {/* Blue diagonal slash — wide parallelogram from upper-right to lower-left */}
+      <polygon points="31,7 48,7 24,49 7,49" fill="#3B6EF8"/>
+
+      {/* Re-draw white stem on top so it stays clean */}
+      <rect x="8" y="7" width="13" height="42" fill="white"/>
+      {/* Re-draw a sliver of the top-left of the bowl so the top stays white above the slash */}
+      <rect x="8" y="7" width="24" height="13" fill="white"/>
     </svg>
   );
 }
