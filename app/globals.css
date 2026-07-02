@@ -23,3 +23,19 @@ a { color: inherit; }
 @keyframes spin    { to { transform: rotate(360deg); } }
 @keyframes fadeIn  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fadeUp  { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Mobile layout helpers */
+.page-padding   { padding: 28px 20px; }
+.set-grid       { display: grid; grid-template-columns: 24px 60px 90px 80px 44px; gap: 6px; align-items: center; }
+.set-grid-head  { display: grid; grid-template-columns: 24px 60px 90px 80px 44px; gap: 6px; margin-bottom: 6px; }
+.trainer-layout { max-width: 900px; margin: 0 auto; padding: 32px 28px; }
+.dash-grid      { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+
+@media (max-width: 600px) {
+  .page-padding   { padding: 16px 14px; }
+  .set-grid       { grid-template-columns: 20px 52px 80px 70px 36px; gap: 4px; }
+  .set-grid-head  { grid-template-columns: 20px 52px 80px 70px 36px; gap: 4px; }
+  .trainer-layout { padding: 16px 14px; }
+  .dash-grid      { grid-template-columns: 1fr; }
+  .hide-mobile    { display: none !important; }
+}

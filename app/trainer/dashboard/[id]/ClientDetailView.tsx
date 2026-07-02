@@ -11,7 +11,7 @@ const bmi = (w: number, h: number) => (w / (h / 100) ** 2).toFixed(1);
 function initSetLogs(ex: Exercise): SetLog[] {
   const count = parseInt(ex.sets) || 3;
   if (ex.setLogs && ex.setLogs.length === count) return ex.setLogs;
-  return Array.from({ length: count }, (_, i) => ex.setLogs?.[i] ?? { weight: "", done: false });
+  return Array.from({ length: count }, (_, i) => ex.setLogs?.[i] ?? { weight: "", reps_done: "", done: false });
 }
 
 export default function ClientDetailView({ client: initial, sessions }: {
@@ -52,6 +52,14 @@ export default function ClientDetailView({ client: initial, sessions }: {
     const ex = prog.weeklyStructure[activeDay].exercises[exIdx];
     if (!ex.setLogs) ex.setLogs = initSetLogs(ex);
     ex.setLogs[setIdx].weight = weight;
+    saveAndSync(prog);
+  }
+
+  function updateRepsDone(exIdx: number, setIdx: number, reps: string) {
+    const prog: Programme = JSON.parse(JSON.stringify(client.programme));
+    const ex = prog.weeklyStructure[activeDay].exercises[exIdx];
+    if (!ex.setLogs) ex.setLogs = initSetLogs(ex);
+    ex.setLogs[setIdx].reps_done = reps;
     saveAndSync(prog);
   }
 
@@ -210,6 +218,7 @@ export default function ClientDetailView({ client: initial, sessions }: {
                     onToggle={() => { setExpandedEx(expandedEx === i ? null : i); setEditingIdx(null); }}
                     onToggleSet={(si) => toggleSet(i, si)}
                     onWeightChange={(si, w) => updateWeight(i, si, w)}
+                    onRepsDoneChange={(si, r) => updateRepsDone(i, si, r)}
                     onSwap={() => setSwappingIdx(i)}
                     onEdit={() => { setEditingIdx(editingIdx === i ? null : i); setExpandedEx(null); }}
                     onUpdate={(fields) => updateExercise(i, fields)}
@@ -351,6 +360,7 @@ function ExerciseCard({ ex, idx, expanded, editing, onToggle, onToggleSet, onWei
   onToggle: () => void;
   onToggleSet: (setIdx: number) => void;
   onWeightChange: (setIdx: number, weight: string) => void;
+  onRepsDoneChange: (setIdx: number, reps: string) => void;
   onSwap: () => void;
   onEdit: () => void;
   onUpdate: (fields: Partial<Exercise>) => void;
@@ -425,36 +435,41 @@ function ExerciseCard({ ex, idx, expanded, editing, onToggle, onToggleSet, onWei
 
       {/* Expanded set rows */}
       {expanded && !editing && (
-        <div style={{ padding: "0 18px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "32px 1fr 120px 80px", gap: 8, marginBottom: 4, paddingLeft: 40 }}>
-            <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>SET</span>
-            <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>TARGET</span>
-            <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>WEIGHT (kg)</span>
-            <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>DONE</span>
+        <div style={{ padding: "0 18px 16px 58px", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div className="set-grid-head">
+            {["#", "TARGET", "REPS DONE", "KG", "✓"].map(h => (
+              <span key={h} style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: .5 }}>{h}</span>
+            ))}
           </div>
           {setLogs.map((s, si) => (
-            <div key={si} style={{
-              display: "grid", gridTemplateColumns: "32px 1fr 120px 80px",
-              gap: 8, alignItems: "center", paddingLeft: 40,
+            <div key={si} className="set-grid" style={{
               background: s.done ? `${C.accent}10` : C.card,
-              borderRadius: 10, padding: "10px 12px 10px 40px",
+              borderRadius: 10, padding: "8px 10px",
               border: `1px solid ${s.done ? `${C.accent}33` : "transparent"}`,
               transition: "all .2s",
             }}>
-              <span style={{ fontFamily: "JetBrains Mono", fontSize: 13, color: C.muted, fontWeight: 700 }}>{si + 1}</span>
-              <span style={{ fontSize: 13, color: C.muted, fontFamily: "JetBrains Mono" }}>{ex.reps}{ex.rpe ? ` @RPE${ex.rpe}` : ""}</span>
+              <span style={{ fontFamily: "JetBrains Mono", fontSize: 12, color: C.muted, fontWeight: 700 }}>{si + 1}</span>
+              <span style={{ fontSize: 12, color: C.muted, fontFamily: "JetBrains Mono" }}>{ex.reps}{ex.rpe ? ` @${ex.rpe}` : ""}</span>
               <input
-                type="number" value={s.weight} placeholder="e.g. 60"
+                type="number" value={s.reps_done ?? ""} placeholder="—"
+                onChange={e => onRepsDoneChange(si, e.target.value)}
+                onClick={e => e.stopPropagation()}
+                style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 6px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "JetBrains Mono" }}
+                onFocus={e => (e.target.style.borderColor = C.accent)}
+                onBlur={e  => (e.target.style.borderColor = C.border)}
+              />
+              <input
+                type="number" value={s.weight} placeholder="kg"
                 onChange={e => onWeightChange(si, e.target.value)}
                 onClick={e => e.stopPropagation()}
-                style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "JetBrains Mono" }}
+                style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 6px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "JetBrains Mono" }}
                 onFocus={e => (e.target.style.borderColor = C.accent)}
                 onBlur={e  => (e.target.style.borderColor = C.border)}
               />
               <div style={{ display: "flex", justifyContent: "center" }}>
                 <input type="checkbox" checked={s.done}
                   onChange={e => { e.stopPropagation(); onToggleSet(si); }}
-                  style={{ width: 18, height: 18, accentColor: C.accent, cursor: "pointer" }}
+                  style={{ width: 17, height: 17, accentColor: C.accent, cursor: "pointer" }}
                 />
               </div>
             </div>

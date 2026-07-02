@@ -7,7 +7,7 @@ import type { Programme, ProgrammeDay, SetLog } from "@/lib/types";
 function initSetLogs(sets: string, existing?: SetLog[]): SetLog[] {
   const count = parseInt(sets) || 3;
   if (existing && existing.length === count) return existing;
-  return Array.from({ length: count }, (_, i) => existing?.[i] ?? { weight: "", done: false });
+  return Array.from({ length: count }, (_, i) => existing?.[i] ?? { weight: "", reps_done: "", done: false });
 }
 
 type ClientData = { id: string; name: string; programme?: Programme };
@@ -59,6 +59,14 @@ export default function ClientPortal() {
     saveProgramme(prog);
   }
 
+  function updateRepsDone(exIdx: number, setIdx: number, reps: string) {
+    const prog: Programme = JSON.parse(JSON.stringify(client!.programme));
+    const ex = prog.weeklyStructure[activeDay].exercises[exIdx];
+    if (!ex.setLogs) ex.setLogs = initSetLogs(ex.sets, ex.setLogs);
+    ex.setLogs[setIdx].reps_done = reps;
+    saveProgramme(prog);
+  }
+
   const days: ProgrammeDay[]  = client?.programme?.weeklyStructure ?? [];
   const day                   = days[activeDay];
   const exercises             = day?.exercises ?? [];
@@ -69,7 +77,7 @@ export default function ClientPortal() {
   if (client) return (
     <div style={{ minHeight: "100vh", background: C.bg }}>
       <Header />
-      <div style={{ maxWidth: 700, margin: "0 auto", padding: "36px 24px", animation: "fadeIn .3s ease" }}>
+      <div className="page-padding" style={{ maxWidth: 700, margin: "0 auto", animation: "fadeIn .3s ease" }}>
 
         {/* Welcome bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, padding: "14px 20px", background: C.card, borderRadius: 14, border: `1px solid ${C.border}` }}>
@@ -155,34 +163,40 @@ export default function ClientPortal() {
 
                   {isOpen && (
                     <div style={{ padding: "0 20px 18px 66px" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "28px 1fr 110px 48px", gap: 8, marginBottom: 8 }}>
-                        {["SET", "TARGET", "WEIGHT (kg)", "✓"].map(h => (
-                          <span key={h} style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: .5 }}>{h}</span>
+                      <div className="set-grid-head" style={{ paddingLeft: 4 }}>
+                        {["#", "TARGET", "REPS DONE", "KG", "✓"].map(h => (
+                          <span key={h} style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: .5 }}>{h}</span>
                         ))}
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                         {setLogs.map((s, si) => (
-                          <div key={si} style={{
-                            display: "grid", gridTemplateColumns: "28px 1fr 110px 48px",
-                            gap: 8, alignItems: "center",
+                          <div key={si} className="set-grid" style={{
                             background: s.done ? `${C.accent}10` : C.card,
                             border: `1px solid ${s.done ? `${C.accent}30` : "transparent"}`,
-                            borderRadius: 10, padding: "9px 12px", transition: "all .2s",
+                            borderRadius: 10, padding: "8px 10px", transition: "all .2s",
                           }}>
-                            <span style={{ fontFamily: "JetBrains Mono", fontSize: 13, color: C.muted, fontWeight: 700 }}>{si + 1}</span>
-                            <span style={{ fontSize: 13, color: C.muted, fontFamily: "JetBrains Mono" }}>{ex.reps}</span>
+                            <span style={{ fontFamily: "JetBrains Mono", fontSize: 12, color: C.muted, fontWeight: 700 }}>{si + 1}</span>
+                            <span style={{ fontSize: 12, color: C.muted, fontFamily: "JetBrains Mono" }}>{ex.reps}</span>
+                            <input
+                              type="number" value={s.reps_done ?? ""} placeholder="—"
+                              onChange={e => updateRepsDone(i, si, e.target.value)}
+                              onClick={e => e.stopPropagation()}
+                              style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 6px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "JetBrains Mono" }}
+                              onFocus={e => (e.target.style.borderColor = C.accent)}
+                              onBlur={e  => (e.target.style.borderColor = C.border)}
+                            />
                             <input
                               type="number" value={s.weight} placeholder="0"
                               onChange={e => updateWeight(i, si, e.target.value)}
                               onClick={e => e.stopPropagation()}
-                              style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", color: C.text, fontSize: 14, outline: "none", width: "100%", fontFamily: "JetBrains Mono" }}
+                              style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 6px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "JetBrains Mono" }}
                               onFocus={e => (e.target.style.borderColor = C.accent)}
                               onBlur={e  => (e.target.style.borderColor = C.border)}
                             />
                             <div style={{ display: "flex", justifyContent: "center" }}>
                               <input type="checkbox" checked={s.done}
                                 onChange={e => { e.stopPropagation(); toggleSet(i, si); }}
-                                style={{ width: 18, height: 18, accentColor: C.accent, cursor: "pointer" }}
+                                style={{ width: 17, height: 17, accentColor: C.accent, cursor: "pointer" }}
                               />
                             </div>
                           </div>
@@ -210,7 +224,7 @@ export default function ClientPortal() {
   return (
     <div style={{ minHeight: "100vh", background: C.bg }}>
       <Header />
-      <div style={{ maxWidth: 420, margin: "0 auto", padding: "100px 24px 0", animation: "fadeUp .4s ease" }}>
+      <div style={{ maxWidth: 420, margin: "0 auto", padding: "60px 20px 0", animation: "fadeUp .4s ease" }}>
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg, ${C.accent}, ${C.blue})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 20px" }}>⚡</div>
           <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -.5, marginBottom: 8 }}>Your Programme</h1>

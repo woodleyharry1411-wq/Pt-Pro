@@ -7,7 +7,7 @@ export default function TrainerLayout({ children }: { children: React.ReactNode 
       <header style={{
         background: C.surface,
         borderBottom: `1px solid ${C.border}`,
-        padding: "0 32px",
+        padding: "0 16px",
         position: "sticky", top: 0, zIndex: 50,
         display: "flex", alignItems: "center", justifyContent: "space-between", height: 64,
       }}>
@@ -25,7 +25,7 @@ export default function TrainerLayout({ children }: { children: React.ReactNode 
         </a>
         <LogoutButton />
       </header>
-      <main style={{ maxWidth: 960, margin: "0 auto", padding: "40px 24px" }}>
+      <main className="trainer-layout" style={{ maxWidth: 960 }}>
         {children}
       </main>
     </div>

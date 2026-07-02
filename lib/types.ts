@@ -1,5 +1,6 @@
 export interface SetLog {
   weight: string
+  reps_done: string
   done: boolean
 }
 
