@@ -419,70 +419,68 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
       {tab === "sessions" && (
         <div>
           {sessions.length === 0 ? (
-            <div style={{ color: C.muted, fontSize: 14, textAlign: "center", padding: "60px 0" }}>No sessions logged yet.</div>
+            <div style={{ color: C.muted, fontSize: 14, textAlign: "center", padding: "60px 0" }}>
+              No sessions logged yet. Sessions are recorded automatically when a client completes all exercises in a day.
+            </div>
           ) : (() => {
-            // Group sessions by programme week if multi-week, otherwise by calendar week
-            const weeks = client.programme?.weeks;
-            if (weeks) {
-              // For multi-week programmes: bin each session by the week it falls in
-              // Sessions don't store weekNumber so we group by calendar week and label them
-              const weekMap = new Map<string, typeof sessions>();
-              sessions.forEach(s => {
-                const d = new Date(s.created_at);
-                const weekStart = new Date(d);
-                weekStart.setDate(d.getDate() - d.getDay());
-                const key = weekStart.toISOString().slice(0, 10);
-                if (!weekMap.has(key)) weekMap.set(key, []);
-                weekMap.get(key)!.push(s);
-              });
-              const calWeeks = Array.from(weekMap.entries()).sort(([a], [b]) => b.localeCompare(a));
-              // Assign programme week labels in order (earliest cal week = Week 1)
-              const reversed = [...calWeeks].reverse();
-              return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                  {reversed.map(([weekKey, weekSessions], idx) => {
-                    const progWeek = weeks[idx];
-                    const label = progWeek ? `Week ${progWeek.weekNumber}: ${progWeek.label}` : `Week ${idx + 1}`;
-                    const date = new Date(weekKey);
-                    const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-                    return (
-                      <div key={weekKey}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                          <div style={{ background: `${C.accent}18`, border: `1px solid ${C.accent}35`, borderRadius: 8, padding: "4px 12px" }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: C.accent, fontFamily: "Saira, sans-serif" }}>{label}</span>
-                          </div>
-                          <span style={{ fontSize: 12, color: C.muted }}>w/c {dateStr} · {weekSessions.length} session{weekSessions.length !== 1 ? "s" : ""}</span>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 8, borderLeft: `2px solid ${C.accent}30` }}>
-                          {weekSessions.map(s => (
-                            <div key={s.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 16px" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: s.note ? 6 : 0 }}>
-                                <span style={{ fontWeight: 700, fontSize: 14 }}>{s.day_label}</span>
-                                <span style={{ fontSize: 12, color: C.muted }}>{new Date(s.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
-                              </div>
-                              {s.note && <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, margin: 0 }}>{s.note}</p>}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  }).reverse()}
-                </div>
-              );
-            }
+            // Group by calendar week (Mon–Sun), most recent first
+            const weekMap = new Map<string, typeof sessions>();
+            sessions.forEach(s => {
+              const d = new Date(s.created_at);
+              // Use Monday as week start
+              const day = d.getDay();
+              const diff = (day === 0 ? -6 : 1 - day);
+              const mon = new Date(d);
+              mon.setDate(d.getDate() + diff);
+              const key = mon.toISOString().slice(0, 10);
+              if (!weekMap.has(key)) weekMap.set(key, []);
+              weekMap.get(key)!.push(s);
+            });
 
-            // Legacy: just flat list
+            const progWeeks = client.programme?.weeks;
+            // Sort calendar weeks oldest→newest to assign programme week labels in order
+            const sortedKeys = Array.from(weekMap.keys()).sort((a, b) => a.localeCompare(b));
+
             return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {sessions.map(s => (
-                  <div key={s.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: s.note ? 8 : 0 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>{s.day_label}</span>
-                      <span style={{ fontSize: 12, color: C.muted }}>{new Date(s.created_at).toLocaleDateString()}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {[...sortedKeys].reverse().map((weekKey, reversedIdx) => {
+                  const weekSessions = weekMap.get(weekKey)!.sort(
+                    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                  );
+                  const progWeekIdx = sortedKeys.length - 1 - reversedIdx;
+                  const progWeek = progWeeks?.[progWeekIdx];
+                  const weekLabel = progWeek
+                    ? `Week ${progWeek.weekNumber}: ${progWeek.label}`
+                    : `Week ${progWeekIdx + 1}`;
+                  const monDate = new Date(weekKey);
+                  const dateStr = monDate.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
+                  return (
+                    <div key={weekKey}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                        <div style={{ background: `${C.accent}18`, border: `1px solid ${C.accent}35`, borderRadius: 8, padding: "5px 14px" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: C.accent, fontFamily: "Saira, sans-serif" }}>{weekLabel}</span>
+                        </div>
+                        <span style={{ fontSize: 12, color: C.muted }}>
+                          w/c {dateStr} · {weekSessions.length}/{client.days_per_week} sessions
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 12, borderLeft: `2px solid ${C.accent}30` }}>
+                        {weekSessions.map(s => (
+                          <div key={s.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 16px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: s.note ? 6 : 0 }}>
+                              <span style={{ fontWeight: 700, fontSize: 14 }}>{s.day_label}</span>
+                              <span style={{ fontSize: 12, color: C.muted }}>
+                                {new Date(s.created_at).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                              </span>
+                            </div>
+                            {s.note && <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, margin: 0 }}>{s.note}</p>}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    {s.note && <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>{s.note}</p>}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             );
           })()}

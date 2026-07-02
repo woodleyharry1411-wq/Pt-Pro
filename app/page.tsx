@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C } from "@/lib/colours";
 import { LogoIcon, LogoFull } from "@/components/Logo";
 import type { Programme, ProgrammeDay, SetLog } from "@/lib/types";
@@ -67,11 +67,22 @@ export default function ClientPortal() {
   function toggleSet(exIdx: number, setIdx: number) {
     const prog: Programme = JSON.parse(JSON.stringify(client!.programme));
     const days = getMutableDays(prog);
-    const ex = days[activeDay].exercises[exIdx];
+    const currentDay = days[activeDay];
+    const wasComplete = currentDay.exercises.every(e => e.done);
+    const ex = currentDay.exercises[exIdx];
     if (!ex.setLogs) ex.setLogs = initSetLogs(ex.sets, ex.setLogs);
     ex.setLogs[setIdx].done = !ex.setLogs[setIdx].done;
     ex.done = ex.setLogs.every(s => s.done);
+    const nowComplete = currentDay.exercises.every(e => e.done);
     saveProgramme(prog);
+    // Auto-log session when the day transitions to fully complete
+    if (!wasComplete && nowComplete) {
+      fetch("/api/client/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: client!.id, dayLabel: currentDay.label }),
+      });
+    }
   }
 
   function updateWeight(exIdx: number, setIdx: number, weight: string) {
@@ -153,14 +164,20 @@ export default function ClientPortal() {
   const nextWeekInfo   = isMultiWeek && !isLastWeek ? prog!.weeks![currentWeekIdx + 1] : null;
   const allDaysComplete = days.length > 0 && days.every(d => d.exercises.length > 0 && d.exercises.every(e => e.done));
   const [advancing, setAdvancing] = useState(false);
+  const advancedRef = useRef(false);
 
   // Auto-advance to next week when all days complete (multi-week only)
-  async function autoAdvanceWeek() {
-    if (!prog?.weeks || isLastWeek || advancing) return;
-    setAdvancing(true);
-    await advanceWeek();
-    setAdvancing(false);
-  }
+  useEffect(() => {
+    if (allDaysComplete && isMultiWeek && !isLastWeek && !advancedRef.current) {
+      advancedRef.current = true;
+      setAdvancing(true);
+      advanceWeek().then(() => setAdvancing(false));
+    }
+    if (!allDaysComplete) {
+      advancedRef.current = false;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDaysComplete]);
 
   if (client) return (
     <div style={{ minHeight: "100vh", background: C.bg }}>
@@ -411,7 +428,6 @@ export default function ClientPortal() {
                   You&apos;ve finished the <strong style={{ color: C.text }}>{currentWeekInfo!.label}</strong> phase.
                   Moving you on to <strong style={{ color: C.accent }}>Week {nextWeekInfo!.weekNumber}: {nextWeekInfo!.label}</strong>…
                 </div>
-                {(() => { autoAdvanceWeek(); return null; })()}
                 {advancing && (
                   <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, color: C.muted, fontSize: 14 }}>
                     <div style={{ width: 18, height: 18, border: `2px solid ${C.border}`, borderTop: `2px solid ${C.accent}`, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
