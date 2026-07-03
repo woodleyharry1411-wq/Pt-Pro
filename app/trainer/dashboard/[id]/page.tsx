@@ -16,6 +16,14 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
 
   if (!client) notFound();
 
+  // Viewing the client marks their messages as read
+  await supabase
+    .from("client_feedback")
+    .update({ read: true })
+    .eq("client_id", id)
+    .eq("from_client", true)
+    .eq("read", false);
+
   return (
     <ClientDetailView
       client={client as Client}

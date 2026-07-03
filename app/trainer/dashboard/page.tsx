@@ -12,10 +12,36 @@ export default async function Dashboard() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/trainer/login");
 
-  const { data: clients } = await supabase
-    .from("clients")
-    .select("id, name, age, weight, height, goal, fitness_level, days_per_week, created_at")
-    .order("created_at", { ascending: false });
+  const [{ data: clients }, { data: unread }, { data: recentSessions }] = await Promise.all([
+    supabase
+      .from("clients")
+      .select("id, name, age, weight, height, goal, fitness_level, days_per_week, created_at")
+      .eq("archived", false)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("client_feedback")
+      .select("client_id")
+      .eq("from_client", true)
+      .eq("read", false),
+    supabase
+      .from("client_sessions")
+      .select("client_id, created_at")
+      .order("created_at", { ascending: false }),
+  ]);
+
+  // Unread message count per client
+  const unreadCount = new Map<string, number>();
+  (unread ?? []).forEach(f => unreadCount.set(f.client_id, (unreadCount.get(f.client_id) ?? 0) + 1));
+
+  // Days since last session per client
+  const lastSession = new Map<string, string>();
+  (recentSessions ?? []).forEach(s => {
+    if (!lastSession.has(s.client_id)) lastSession.set(s.client_id, s.created_at);
+  });
+  const daysSince = (id: string, createdAt: string) => {
+    const last = lastSession.get(id) ?? createdAt;
+    return Math.floor((Date.now() - new Date(last).getTime()) / 864e5);
+  };
 
   return (
     <div style={{ animation: "fadeIn .3s ease" }}>
@@ -84,6 +110,21 @@ export default async function Dashboard() {
                     <Tag label={c.goal} color={C.accent} />
                     <Tag label={c.fitness_level} color={C.blue} />
                   </div>
+
+                  {(unreadCount.get(c.id) || daysSince(c.id, c.created_at) >= 7) && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+                      {!!unreadCount.get(c.id) && (
+                        <span style={{ background: `${C.warn}18`, color: C.warn, border: `1px solid ${C.warn}40`, borderRadius: 6, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>
+                          💬 {unreadCount.get(c.id)} new message{unreadCount.get(c.id)! > 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {daysSince(c.id, c.created_at) >= 7 && (
+                        <span style={{ background: `${C.danger}15`, color: C.danger, border: `1px solid ${C.danger}35`, borderRadius: 6, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>
+                          😴 No session in {daysSince(c.id, c.created_at)}d
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span style={{ fontSize: 12, color: C.muted }}>

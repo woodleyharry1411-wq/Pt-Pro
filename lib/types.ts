@@ -49,6 +49,8 @@ export interface Client {
   injuries?: string
   notes?: string
   programme?: Programme
+  pin?: string
+  archived?: boolean
   created_at: string
 }
 

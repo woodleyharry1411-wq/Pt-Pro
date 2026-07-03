@@ -146,6 +146,7 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
       gender: client.gender, goal: client.goal, fitness_level: client.fitness_level,
       equipment: client.equipment, days_per_week: client.days_per_week,
       session_duration: client.session_duration, injuries: client.injuries, notes: client.notes,
+      pin: client.pin,
     });
     setEditingProfile(true);
   }
@@ -169,6 +170,79 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
       })
     );
     await saveAndSync(prog);
+  }
+
+  const [generatingBlock, setGeneratingBlock] = useState(false);
+
+  async function generateNextBlock() {
+    if (!confirm("Generate a new 4-week block based on this client's logged performance? The current programme will be replaced (completed weeks stay saved in history).")) return;
+    setGeneratingBlock(true);
+    try {
+      // Best logged weight per exercise across history + current programme
+      const allDayLists: ProgrammeDay[][] = [
+        ...snapshots.map(s => s.days),
+        ...(client.programme?.weeks?.map(w => w.weeklyStructure) ?? []),
+        client.programme?.weeklyStructure ?? [],
+      ];
+      const bests = new Map<string, number>();
+      allDayLists.forEach(dl => dl?.forEach(d => d.exercises.forEach(ex => {
+        ex.setLogs?.forEach(s => {
+          const w = parseFloat(s.weight);
+          if (!isNaN(w) && w > (bests.get(ex.name) ?? 0)) bests.set(ex.name, w);
+        });
+      })));
+      const perf = Array.from(bests.entries()).map(([n, w]) => `- ${n}: best logged ${w}kg`).join("\n")
+        || "No weights logged yet — estimate sensible starting loads for their level.";
+
+      const prompt = `
+You are designing the NEXT 4-week progressive training block for a client who has just completed their previous programme. Progress them from their ACTUAL logged performance below — do not start them over as a beginner.
+
+CLIENT PROFILE:
+- Name: ${client.name}, Age: ${client.age}, Gender: ${client.gender}
+- Weight: ${client.weight}kg, Height: ${client.height}cm
+- Goal: ${client.goal}, Fitness Level: ${client.fitness_level}
+- Equipment: ${client.equipment}, Days/Week: ${client.days_per_week}, Session: ${client.session_duration ?? 60} min
+- Injuries: ${client.injuries || "None"}
+
+LOGGED PERFORMANCE (their current strength — build on this):
+${perf}
+
+REQUIREMENTS:
+- Reference their logged weights in coaching notes (e.g. "start at 42.5kg, you hit 40kg last block")
+- Keep most exercises they know, add 1-2 new variations per day for freshness
+- Same 4-week progression: W1 "Foundation" 3x12-15 RPE6, W2 "Build" 3x10-12 RPE7, W3 "Overload" 4x8-10 RPE8, W4 "Peak" 4x6-8 RPE9
+- Same exercises across all 4 weeks of this block
+
+Return ONLY a JSON object, no markdown:
+{
+  "summary": "3-4 sentences referencing their progress and what this block targets",
+  "currentWeek": 0,
+  "weeks": [
+    { "weekNumber": 1, "label": "Foundation", "weeklyStructure": [ { "label": "DAY 1", "focus": "...", "exercises": [{ "name": "...", "sets": "3", "reps": "12-15", "rpe": "6", "notes": "..." }] } ] },
+    { "weekNumber": 2, "label": "Build", "weeklyStructure": [...] },
+    { "weekNumber": 3, "label": "Overload", "weeklyStructure": [...] },
+    { "weekNumber": 4, "label": "Peak", "weeklyStructure": [...] }
+  ]
+}`;
+
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, systemPrompt: "You are an elite personal trainer. Return only valid JSON." }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error ?? "API error");
+      const programme: Programme = JSON.parse(json.text.replace(/```json|```/g, "").trim());
+
+      await updateProgramme(client.id, programme);
+      setClient(c => ({ ...c, programme }));
+      setViewingWeek(0);
+      setActiveDay(0);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to generate the next block. Please try again.");
+    }
+    setGeneratingBlock(false);
   }
 
   async function setClientWeek(weekIdx: number) {
@@ -288,8 +362,15 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
             </div>
           )}
 
-          {/* Reset week */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          {/* Programme actions */}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <button onClick={generateNextBlock} disabled={generatingBlock} style={{
+              background: `${C.accent}15`, border: `1px solid ${C.accent}45`, borderRadius: 10,
+              color: C.accent, padding: "7px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+              opacity: generatingBlock ? 0.6 : 1,
+            }}>
+              {generatingBlock ? "Generating…" : "⚡ Generate Next Block (AI)"}
+            </button>
             <button onClick={resetWeek} style={{
               background: "transparent", border: `1px solid ${C.border}`, borderRadius: 10,
               color: C.muted, padding: "7px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer",
@@ -524,6 +605,7 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
                 { label: "Equipment", key: "equipment", type: "text" },
                 { label: "Days/Week", key: "days_per_week", type: "number" },
                 { label: "Session Duration (min)", key: "session_duration", type: "number" },
+                { label: "Login PIN (4-6 digits)", key: "pin", type: "text" },
               ] as { label: string; key: keyof typeof profileDraft; type: string }[]).map(({ label, key, type }) => (
                 <div key={key} style={{ background: C.card, border: `1px solid ${C.accent}40`, borderRadius: 14, padding: "14px 18px" }}>
                   <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginBottom: 6, letterSpacing: .5 }}>{label.toUpperCase()}</div>
@@ -562,6 +644,7 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
                 ["Equipment", client.equipment], ["Goal", client.goal],
                 ["Fitness Level", client.fitness_level], ["Days/Week", `${client.days_per_week} days`],
                 ["Session Duration", `${client.session_duration ?? 60} min`],
+                ["Login PIN", client.pin ? `🔒 ${client.pin}` : "⚠ Not set — anyone with their name can log in"],
               ] as [string, string][]).map(([k, v]) => (
                 <div key={k} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px" }}>
                   <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 4, letterSpacing: .5 }}>{k.toUpperCase()}</div>

@@ -28,27 +28,54 @@ function getMutableDays(prog: Programme): ProgrammeDay[] {
 }
 
 type FeedbackItem = { id: string; message: string; from_client: boolean; created_at: string };
-type ClientData = { id: string; name: string; programme?: Programme; feedback?: FeedbackItem[] };
+type SnapshotItem = { id: string; week_label?: string; days: ProgrammeDay[]; created_at: string };
+type ClientData = { id: string; name: string; programme?: Programme; feedback?: FeedbackItem[]; snapshots?: SnapshotItem[] };
+
+// Highest weight ever logged for an exercise across a set of day lists
+function maxWeightIn(dayLists: ProgrammeDay[][], exName: string): number {
+  let max = 0;
+  dayLists.forEach(days => days?.forEach(d => d.exercises.forEach(ex => {
+    if (ex.name === exName && ex.setLogs) {
+      ex.setLogs.forEach(s => {
+        const w = parseFloat(s.weight);
+        if (!isNaN(w) && w > max) max = w;
+      });
+    }
+  })));
+  return max;
+}
 
 export default function ClientPortal() {
   const [name, setName]             = useState("");
+  const [pin, setPin]               = useState("");
+  const [pinNeeded, setPinNeeded]   = useState(false);
   const [client, setClient]         = useState<ClientData | null>(null);
   const [searched, setSearched]     = useState(false);
   const [loading, setLoading]       = useState(false);
   const [activeDay, setActiveDay]   = useState(0);
   const [expandedEx, setExpandedEx]     = useState<number | null>(null);
-  const [clientTab, setClientTab]       = useState<"programme" | "feedback">("programme");
+  const [clientTab, setClientTab]       = useState<"programme" | "progress" | "feedback">("programme");
   const [clientMsg, setClientMsg]       = useState("");
   const [sendingMsg, setSendingMsg]     = useState(false);
   const [localFeedback, setLocalFeedback] = useState<FeedbackItem[]>([]);
+  const [restEndsAt, setRestEndsAt]     = useState<number | null>(null);
+  const [newPB, setNewPB]               = useState<string | null>(null);
 
   async function search() {
     if (!name.trim()) return;
     setLoading(true);
-    const res = await fetch(`/api/client?name=${encodeURIComponent(name.trim())}`);
-    const { client } = await res.json();
-    setClient(client ?? null);
-    setLocalFeedback(client?.feedback ?? []);
+    const res = await fetch(`/api/client?name=${encodeURIComponent(name.trim())}&pin=${encodeURIComponent(pin.trim())}`);
+    const json = await res.json();
+    if (json.pinRequired) {
+      setPinNeeded(true);
+      setClient(null);
+      setSearched(true);
+      setLoading(false);
+      return;
+    }
+    setPinNeeded(false);
+    setClient(json.client ?? null);
+    setLocalFeedback(json.client?.feedback ?? []);
     setSearched(true);
     setActiveDay(0);
     setExpandedEx(null);
@@ -61,7 +88,7 @@ export default function ClientPortal() {
     await fetch("/api/client/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: client.id, programme: prog }),
+      body: JSON.stringify({ clientId: client.id, programme: prog, pin: pin.trim() }),
     });
   }
 
@@ -76,12 +103,17 @@ export default function ClientPortal() {
     ex.done = ex.setLogs.every(s => s.done);
     const nowComplete = currentDay.exercises.every(e => e.done);
     saveProgramme(prog);
+    // Rest timer starts when a set is ticked done (not when unticking)
+    if (ex.setLogs[setIdx].done && !nowComplete) {
+      setRestEndsAt(Date.now() + 90_000);
+    }
     // Auto-log session when the day transitions to fully complete
     if (!wasComplete && nowComplete) {
+      setRestEndsAt(null);
       fetch("/api/client/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: client!.id, dayLabel: currentDay.label }),
+        body: JSON.stringify({ clientId: client!.id, dayLabel: currentDay.label, pin: pin.trim() }),
       });
     }
   }
@@ -91,8 +123,15 @@ export default function ClientPortal() {
     const days = getMutableDays(prog);
     const ex = days[activeDay].exercises[exIdx];
     if (!ex.setLogs) ex.setLogs = initSetLogs(ex.sets, ex.setLogs);
+    const prevBest = maxWeightIn([...(client!.snapshots?.map(s => s.days) ?? [])], ex.name);
     ex.setLogs[setIdx].weight = weight;
     saveProgramme(prog);
+    // New personal best?
+    const w = parseFloat(weight);
+    if (!isNaN(w) && prevBest > 0 && w > prevBest && !isCardio(ex.name)) {
+      setNewPB(`${ex.name} — ${w}kg (previous best ${prevBest}kg)`);
+      setTimeout(() => setNewPB(null), 5000);
+    }
   }
 
   function updateRepsDone(exIdx: number, setIdx: number, reps: string) {
@@ -110,8 +149,10 @@ export default function ClientPortal() {
     await fetch("/api/client/snapshot", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: client.id, weekLabel, days: weekDays }),
+      body: JSON.stringify({ clientId: client.id, weekLabel, days: weekDays, pin: pin.trim() }),
     });
+    // reflect locally so PB detection and progress chart include this week
+    setClient(c => c ? { ...c, snapshots: [...(c.snapshots ?? []), { id: Date.now().toString(), week_label: weekLabel, days: weekDays, created_at: new Date().toISOString() }] } : c);
   }
 
   async function resetWeek() {
@@ -156,7 +197,7 @@ export default function ClientPortal() {
     await fetch("/api/client/feedback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: client.id, message: clientMsg.trim() }),
+      body: JSON.stringify({ clientId: client.id, message: clientMsg.trim(), pin: pin.trim() }),
     });
     setLocalFeedback(f => [{ id: Date.now().toString(), message: clientMsg.trim(), from_client: true, created_at: new Date().toISOString() }, ...f]);
     setClientMsg("");
@@ -209,14 +250,14 @@ export default function ClientPortal() {
 
         {/* Tab bar */}
         <div style={{ display: "flex", gap: 4, marginBottom: 20, background: C.card, borderRadius: 12, padding: 4, width: "fit-content" }}>
-          {(["programme", "feedback"] as const).map(t => (
+          {(["programme", "progress", "feedback"] as const).map(t => (
             <button key={t} onClick={() => setClientTab(t)} style={{
               background: clientTab === t ? C.accent : "transparent",
               color: clientTab === t ? "#fff" : C.muted,
-              border: "none", borderRadius: 9, padding: "8px 18px",
+              border: "none", borderRadius: 9, padding: "8px 16px",
               fontWeight: 700, fontSize: 13, cursor: "pointer", textTransform: "capitalize",
               fontFamily: "Saira, sans-serif", letterSpacing: 0.5,
-            }}>{t === "feedback" ? `Feedback${client.feedback?.length ? ` (${client.feedback.length})` : ""}` : "Programme"}</button>
+            }}>{t === "feedback" ? `Feedback${client.feedback?.length ? ` (${client.feedback.length})` : ""}` : t}</button>
           ))}
         </div>
 
@@ -266,6 +307,11 @@ export default function ClientPortal() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* Progress tab */}
+        {clientTab === "progress" && (
+          <ClientProgress snapshots={client.snapshots ?? []} currentDays={days} />
         )}
 
         {clientTab === "programme" && <>
@@ -509,6 +555,22 @@ export default function ClientPortal() {
         )}
         </>}
       </div>
+
+      {/* Rest timer */}
+      {restEndsAt && <RestTimer endsAt={restEndsAt} onDone={() => setRestEndsAt(null)} />}
+
+      {/* New PB toast */}
+      {newPB && (
+        <div style={{
+          position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)",
+          background: "linear-gradient(135deg, #34D399, #10B981)", color: "#fff",
+          borderRadius: 14, padding: "12px 22px", fontWeight: 700, fontSize: 14,
+          fontFamily: "Saira, sans-serif", boxShadow: "0 8px 30px rgba(16,185,129,.4)",
+          zIndex: 200, animation: "fadeUp .3s ease", maxWidth: "90vw", textAlign: "center",
+        }}>
+          🎉 NEW PB! {newPB}
+        </div>
+      )}
     </div>
   );
 
@@ -532,6 +594,15 @@ export default function ClientPortal() {
             onFocus={e => (e.target.style.borderColor = C.accent)}
             onBlur={e  => (e.target.style.borderColor = C.border)}
           />
+          <input
+            value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onKeyDown={e => e.key === "Enter" && search()}
+            placeholder="PIN (if your trainer gave you one)"
+            inputMode="numeric"
+            style={{ background: C.card, border: `1px solid ${pinNeeded ? C.danger : C.border}`, borderRadius: 12, padding: "14px 18px", color: C.text, fontSize: 16, outline: "none", width: "100%", letterSpacing: 3 }}
+            onFocus={e => (e.target.style.borderColor = C.accent)}
+            onBlur={e  => (e.target.style.borderColor = pinNeeded ? C.danger : C.border)}
+          />
           <button onClick={search} disabled={loading} style={{
             background: C.accent, color: "#fff", border: "none", borderRadius: 12,
             padding: "14px", fontWeight: 700, fontSize: 16, fontFamily: "Saira, sans-serif", letterSpacing: 0.5,
@@ -541,9 +612,171 @@ export default function ClientPortal() {
         </div>
         {searched && !client && (
           <p style={{ color: C.danger, fontSize: 14, textAlign: "center", marginTop: 16 }}>
-            No programme found. Check your name with your trainer.
+            {pinNeeded
+              ? "This account is protected by a PIN. Enter the PIN your trainer gave you."
+              : "No programme found. Check your name with your trainer."}
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Rest timer ──────────────────────────────────────────────────────────────
+
+function RestTimer({ endsAt, onDone }: { endsAt: number; onDone: () => void }) {
+  const [remaining, setRemaining] = useState(Math.max(0, endsAt - Date.now()));
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const r = Math.max(0, endsAt - Date.now());
+      setRemaining(r);
+      if (r <= 0) { clearInterval(iv); onDone(); }
+    }, 250);
+    return () => clearInterval(iv);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endsAt]);
+
+  const secs = Math.ceil(remaining / 1000);
+  const total = 90;
+  const pct = Math.min(100, (secs / total) * 100);
+
+  return (
+    <div style={{
+      position: "fixed", bottom: 20, right: 20, zIndex: 190,
+      background: C.card, border: `1px solid ${C.accent}50`, borderRadius: 16,
+      padding: "14px 18px", boxShadow: "0 8px 30px rgba(0,0,0,.35)",
+      display: "flex", alignItems: "center", gap: 14, animation: "fadeUp .3s ease",
+    }}>
+      <div style={{ position: "relative", width: 48, height: 48 }}>
+        <svg width="48" height="48" viewBox="0 0 48 48" style={{ transform: "rotate(-90deg)" }}>
+          <circle cx="24" cy="24" r="20" fill="none" stroke={C.border} strokeWidth="4" />
+          <circle cx="24" cy="24" r="20" fill="none" stroke={C.accent} strokeWidth="4"
+            strokeDasharray={`${(pct / 100) * 125.7} 125.7`} strokeLinecap="round" />
+        </svg>
+        <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, fontSize: 13, color: C.text }}>
+          {secs}
+        </span>
+      </div>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: "Saira, sans-serif", letterSpacing: 0.5 }}>REST</div>
+        <button onClick={onDone} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, padding: 0, textDecoration: "underline" }}>
+          Skip
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Client progress tab ─────────────────────────────────────────────────────
+
+function ClientProgress({ snapshots, currentDays }: { snapshots: SnapshotItem[]; currentDays: ProgrammeDay[] }) {
+  // Exercises with any logged weight
+  const names = new Set<string>();
+  [...snapshots.map(s => s.days), currentDays].forEach(days =>
+    days?.forEach(d => d.exercises.forEach(ex => {
+      if (!isCardio(ex.name) && ex.setLogs?.some(s => parseFloat(s.weight) > 0)) names.add(ex.name);
+    }))
+  );
+  const exercises = Array.from(names).sort();
+  const [selected, setSelected] = useState("");
+  const exName = selected || exercises[0] || "";
+
+  if (!exercises.length) return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "50px 20px", textAlign: "center", color: C.muted, fontSize: 14, lineHeight: 1.7 }}>
+      No weights logged yet.<br />Record the weights you lift and your progress will show here week by week.
+    </div>
+  );
+
+  // Personal bests across everything
+  const pbs = exercises.map(n => ({
+    name: n,
+    best: maxWeightIn([...snapshots.map(s => s.days), currentDays], n),
+  })).filter(p => p.best > 0).sort((a, b) => b.best - a.best);
+
+  // Chart points for selected exercise
+  const points: { label: string; value: number }[] = [];
+  snapshots.forEach((s, i) => {
+    const v = maxWeightIn([s.days], exName);
+    if (v > 0) points.push({ label: s.week_label?.replace(/Week (\d+).*/, "W$1") || `W${i + 1}`, value: v });
+  });
+  const cur = maxWeightIn([currentDays], exName);
+  if (cur > 0) points.push({ label: "Now", value: cur });
+
+  const first = points[0]?.value, last = points[points.length - 1]?.value;
+  const gain = first && last ? last - first : 0;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Strength chart */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px 16px 10px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          <select value={exName} onChange={e => setSelected(e.target.value)}
+            style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", color: C.text, fontSize: 13, fontWeight: 600, outline: "none", maxWidth: "60%" }}>
+            {exercises.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          {points.length >= 2 && gain !== 0 && (
+            <span style={{ fontSize: 13, fontWeight: 700, color: gain > 0 ? "#34D399" : C.danger, fontFamily: "JetBrains Mono, monospace" }}>
+              {gain > 0 ? "▲" : "▼"} {Math.abs(gain)}kg
+            </span>
+          )}
+        </div>
+        {points.length < 2 ? (
+          <div style={{ padding: "24px 8px", textAlign: "center", color: C.muted, fontSize: 13 }}>
+            {points.length === 1 ? `Current best: ${points[0].value}kg. Finish more weeks to see your trend.` : "No data for this exercise yet."}
+          </div>
+        ) : (() => {
+          const W = 560, H = 170, padL = 40, padR = 16, padT = 20, padB = 30;
+          const chartW = W - padL - padR, chartH = H - padT - padB;
+          const maxV = Math.max(...points.map(p => p.value));
+          const minV = Math.min(...points.map(p => p.value));
+          const range = maxV - minV || 1;
+          const pts = points.map((p, i) => ({
+            x: padL + (i / (points.length - 1)) * chartW,
+            y: padT + (1 - (p.value - minV) / range) * chartH * 0.85 + chartH * 0.05,
+            ...p,
+          }));
+          const line = pts.map(p => `${p.x},${p.y}`).join(" ");
+          const area = `${pts[0].x},${padT + chartH} ${line} ${pts[pts.length - 1].x},${padT + chartH}`;
+          return (
+            <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", overflow: "visible" }}>
+              {[0, 1, 2, 3].map(i => (
+                <line key={i} x1={padL} x2={W - padR} y1={padT + (i / 3) * chartH} y2={padT + (i / 3) * chartH} stroke="var(--border)" strokeWidth={1} />
+              ))}
+              <defs>
+                <linearGradient id="clientStrengthGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#34D399" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#34D399" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <polygon points={area} fill="url(#clientStrengthGrad)" />
+              <polyline points={line} fill="none" stroke="#34D399" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+              {pts.map((p, i) => (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r={4} fill="#34D399" stroke="var(--surface)" strokeWidth={2} />
+                  <text x={p.x} y={p.y - 10} textAnchor="middle" fontSize={10} fill="var(--text)" fontWeight="700">{p.value}kg</text>
+                  <text x={p.x} y={H - 4} textAnchor="middle" fontSize={9} fill="var(--muted)">{p.label}</text>
+                </g>
+              ))}
+            </svg>
+          );
+        })()}
+      </div>
+
+      {/* Personal bests */}
+      <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, fontFamily: "Saira, sans-serif" }}>PERSONAL BESTS</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {pbs.map(({ name: n, best }, i) => (
+          <div key={n} style={{
+            background: C.card, border: `1px solid ${i === 0 ? "#34D39950" : C.border}`,
+            borderRadius: 12, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center",
+          }}>
+            <span style={{ fontSize: 14, fontWeight: 700, fontFamily: "Saira, sans-serif" }}>
+              {i === 0 ? "🏆 " : ""}{n}
+            </span>
+            <span style={{ fontSize: 15, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "#34D399" }}>{best}kg</span>
+          </div>
+        ))}
       </div>
     </div>
   );
