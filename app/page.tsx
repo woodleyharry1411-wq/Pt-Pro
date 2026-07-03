@@ -166,12 +166,20 @@ export default function ClientPortal() {
   const [advancing, setAdvancing] = useState(false);
   const advancedRef = useRef(false);
 
-  // Auto-advance to next week when all days complete (multi-week only)
+  // When all days are complete: multi-week clients advance to the next week,
+  // legacy single-week clients get a fresh week (weights kept). Runs once per completion.
   useEffect(() => {
-    if (allDaysComplete && isMultiWeek && !isLastWeek && !advancedRef.current) {
+    // Multi-week final week stays complete so the trainer can review it
+    const shouldAct = allDaysComplete && (!isMultiWeek || !isLastWeek);
+    if (shouldAct && !advancedRef.current) {
       advancedRef.current = true;
       setAdvancing(true);
-      advanceWeek().then(() => setAdvancing(false));
+      // Brief delay so the client sees the completion screen before it resets
+      const t = setTimeout(() => {
+        const action = isMultiWeek ? advanceWeek() : resetWeek();
+        action.then(() => setAdvancing(false));
+      }, 2500);
+      return () => clearTimeout(t);
     }
     if (!allDaysComplete) {
       advancedRef.current = false;
@@ -465,6 +473,12 @@ export default function ClientPortal() {
                 >
                   Message Your Trainer
                 </button>
+                {!isMultiWeek && (
+                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, color: C.muted, fontSize: 13, marginTop: 16 }}>
+                    <div style={{ width: 16, height: 16, border: `2px solid ${C.border}`, borderTop: `2px solid ${C.accent}`, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                    Setting up your next week — your weights are saved…
+                  </div>
+                )}
               </div>
             )
           ) : (
