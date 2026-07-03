@@ -2,15 +2,48 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Themes ─────────────────────────────────────────────────────── */
+:root, html[data-theme="dark"] {
+  --bg:      #0A0C14;
+  --surface: #0F1120;
+  --card:    #161826;
+  --border:  #1E2238;
+  --text:    #F0F2FA;
+  --muted:   #6B7199;
+  --bg-soft: rgba(10, 12, 20, 0.5);
+  --scroll-track: #14151D;
+  --scroll-thumb: #272A3A;
+  /* original logo art is dark-on-white: invert for dark theme */
+  --logo-filter: invert(1) hue-rotate(190deg);
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --bg:      #F4F6FB;
+  --surface: #FFFFFF;
+  --card:    #FFFFFF;
+  --border:  #DDE3F0;
+  --text:    #141826;
+  --muted:   #5A6180;
+  --bg-soft: rgba(244, 246, 251, 0.5);
+  --scroll-track: #E8ECF5;
+  --scroll-thumb: #C3CADF;
+  --logo-filter: none;
+  color-scheme: light;
+}
+
 body {
-  background: #0A0C14;
-  color: #F0F2FA;
+  background: var(--bg);
+  color: var(--text);
   font-family: 'Manrope', sans-serif;
   font-size: 15px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background 0.25s ease, color 0.25s ease;
 }
+
+.logo-adaptive { filter: var(--logo-filter); }
 
 h1, h2, h3, h4, h5, h6, .saira {
   font-family: 'Saira', sans-serif;
@@ -21,8 +54,8 @@ input, select, textarea { font-family: inherit; }
 a { color: inherit; }
 
 ::-webkit-scrollbar       { width: 5px; }
-::-webkit-scrollbar-track  { background: #14151D; }
-::-webkit-scrollbar-thumb  { background: #272A3A; border-radius: 4px; }
+::-webkit-scrollbar-track  { background: var(--scroll-track); }
+::-webkit-scrollbar-thumb  { background: var(--scroll-thumb); border-radius: 4px; }
 
 @keyframes spin    { to { transform: rotate(360deg); } }
 @keyframes fadeIn  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }

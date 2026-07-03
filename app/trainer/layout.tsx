@@ -1,6 +1,7 @@
 import { C } from "@/lib/colours";
 import { LogoIcon } from "@/components/Logo";
 import LogoutButton from "./LogoutButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function TrainerLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -19,7 +20,10 @@ export default function TrainerLayout({ children }: { children: React.ReactNode 
             <span style={{ fontSize: 11, color: C.muted, marginLeft: 8, fontWeight: 600 }}>Trainer</span>
           </div>
         </a>
-        <LogoutButton />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <ThemeToggle />
+          <LogoutButton />
+        </div>
       </header>
       <main className="trainer-layout" style={{ maxWidth: 960 }}>
         {children}

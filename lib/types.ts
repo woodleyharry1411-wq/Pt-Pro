@@ -60,6 +60,14 @@ export interface ClientSession {
   created_at: string
 }
 
+export interface WeekSnapshot {
+  id: string
+  client_id: string
+  week_label?: string
+  days: ProgrammeDay[]
+  created_at: string
+}
+
 export interface ClientFeedback {
   id: string
   client_id: string

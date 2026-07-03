@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { C } from "@/lib/colours";
 import { LogoIcon, LogoFull } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import type { Programme, ProgrammeDay, SetLog } from "@/lib/types";
 
 const CARDIO_KEYWORDS = ["run", "bike", "cycl", "swim", "row", "cardio", "treadmill", "elliptic", "walk", "jog", "sprint", "hiit", "skip", "jump rope", "stair", "rower"];
@@ -103,9 +104,20 @@ export default function ClientPortal() {
     saveProgramme(prog);
   }
 
+  // Preserve the completed week's data (weights, reps) before it gets wiped
+  async function snapshotWeek(weekDays: ProgrammeDay[], weekLabel: string) {
+    if (!client) return;
+    await fetch("/api/client/snapshot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: client.id, weekLabel, days: weekDays }),
+    });
+  }
+
   async function resetWeek() {
     if (!client?.programme) return;
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
+    await snapshotWeek(getWeekDays(prog), "Week");
     getMutableDays(prog).forEach(day =>
       day.exercises.forEach(ex => {
         ex.done = false;
@@ -120,7 +132,10 @@ export default function ClientPortal() {
   async function advanceWeek() {
     if (!client?.programme?.weeks) return;
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
-    const nextIdx = (prog.currentWeek ?? 0) + 1;
+    const curIdx = prog.currentWeek ?? 0;
+    const curWeek = prog.weeks![curIdx];
+    await snapshotWeek(curWeek.weeklyStructure, `Week ${curWeek.weekNumber}: ${curWeek.label}`);
+    const nextIdx = curIdx + 1;
     if (nextIdx >= prog.weeks!.length) return;
     // Clear done state on the next week so client starts fresh (weights carried forward)
     prog.weeks![nextIdx].weeklyStructure.forEach(day =>
@@ -376,7 +391,7 @@ export default function ClientPortal() {
                         <div key={si} style={{
                           display: "grid", gridTemplateColumns: "28px 1fr 80px 80px 36px",
                           gap: 6, alignItems: "center", marginBottom: 6,
-                          background: s.done ? `${C.accent}12` : `${C.bg}80`,
+                          background: s.done ? `${C.accent}12` : "var(--bg-soft)",
                           borderRadius: 10, padding: "8px 10px",
                           border: `1px solid ${s.done ? `${C.accent}30` : "transparent"}`,
                           transition: "all .2s",
@@ -550,6 +565,7 @@ function Header({ clientName, onSwitch }: { clientName: string; onSwitch: () => 
           <div style={{ fontSize: 10, color: C.muted, fontWeight: 600, letterSpacing: 1 }}>WELCOME BACK</div>
           <div style={{ fontWeight: 700, fontSize: 13, fontFamily: "Saira, sans-serif" }}>{clientName}</div>
         </div>
+        <ThemeToggle />
         <button onClick={onSwitch} style={{
           background: C.card, border: `1px solid ${C.border}`, borderRadius: 8,
           color: C.muted, fontSize: 13, fontWeight: 600, padding: "6px 14px",
@@ -569,7 +585,10 @@ function SearchHeader() {
         <LogoIcon size={32} />
         <span className="saira" style={{ fontWeight: 800, fontSize: 15, letterSpacing: 1, textTransform: "uppercase" }}>PT <span style={{ color: C.accent }}>PRO</span></span>
       </div>
-      <a href="/trainer/login" style={{ fontSize: 13, color: C.muted, textDecoration: "none", fontWeight: 600 }}>Trainer →</a>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <ThemeToggle />
+        <a href="/trainer/login" style={{ fontSize: 13, color: C.muted, textDecoration: "none", fontWeight: 600 }}>Trainer →</a>
+      </div>
     </header>
   );
 }

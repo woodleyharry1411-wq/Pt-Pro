@@ -1,7 +1,6 @@
 import Image from "next/image";
 
-// Inverts dark logo for use on dark backgrounds: dark→white, blue stays blue
-const darkModeFilter = "invert(1) hue-rotate(190deg)";
+// .logo-adaptive applies var(--logo-filter): inverted on dark theme, untouched on light
 
 export function LogoIcon({ size = 40 }: { size?: number }) {
   return (
@@ -10,7 +9,8 @@ export function LogoIcon({ size = 40 }: { size?: number }) {
       alt="PT PRO"
       width={size}
       height={size}
-      style={{ objectFit: "contain", filter: darkModeFilter }}
+      className="logo-adaptive"
+      style={{ objectFit: "contain" }}
       priority
     />
   );
@@ -25,7 +25,8 @@ export function LogoFull({ height = 44 }: { height?: number }) {
       alt="PT PRO"
       width={w}
       height={height}
-      style={{ objectFit: "contain", filter: darkModeFilter }}
+      className="logo-adaptive"
+      style={{ objectFit: "contain" }}
       priority
     />
   );

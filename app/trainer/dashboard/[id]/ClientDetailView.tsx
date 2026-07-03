@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { C } from "@/lib/colours";
 import { updateProgramme, logSession, updateClient, saveFeedback, deleteFeedback } from "@/lib/actions";
-import type { Client, ClientSession, ClientFeedback, Exercise, SetLog, Programme } from "@/lib/types";
+import type { Client, ClientSession, ClientFeedback, Exercise, SetLog, Programme, ProgrammeDay, WeekSnapshot } from "@/lib/types";
 
 const bmi = (w: number, h: number) => (w / (h / 100) ** 2).toFixed(1);
 
@@ -17,10 +17,11 @@ function initSetLogs(ex: Exercise): SetLog[] {
   return Array.from({ length: count }, (_, i) => ex.setLogs?.[i] ?? { weight: "", reps_done: "", done: false });
 }
 
-export default function ClientDetailView({ client: initial, sessions, feedback: initialFeedback }: {
+export default function ClientDetailView({ client: initial, sessions, feedback: initialFeedback, snapshots = [] }: {
   client: Client;
   sessions: ClientSession[];
   feedback: ClientFeedback[];
+  snapshots?: WeekSnapshot[];
 }) {
   const router = useRouter();
   const [client, setClient]           = useState(initial);
@@ -151,6 +152,16 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
 
   async function resetWeek() {
     const prog: Programme = JSON.parse(JSON.stringify(client.programme));
+    // Preserve current data before wiping
+    await fetch("/api/client/snapshot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId: client.id,
+        weekLabel: prog.weeks ? `Week ${prog.weeks[viewingWeek].weekNumber}: ${prog.weeks[viewingWeek].label}` : "Week",
+        days: getMutableDays(prog, viewingWeek),
+      }),
+    });
     getMutableDays(prog, viewingWeek).forEach(day =>
       day.exercises.forEach(ex => {
         ex.done = false;
@@ -189,7 +200,7 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
 
       {/* Header card */}
       <div style={{
-        background: `linear-gradient(135deg, ${C.card} 0%, #252a38 100%)`,
+        background: `linear-gradient(135deg, ${C.card} 0%, ${C.accent}14 100%)`,
         border: `1px solid ${C.border}`, borderRadius: 20, padding: 24, marginBottom: 24,
         display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16,
       }}>
@@ -577,7 +588,13 @@ export default function ClientDetailView({ client: initial, sessions, feedback: 
       {/* ── PROGRESS ── */}
       {tab === "progress" && (
         <div>
+          {/* Strength over time */}
           <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginBottom: 16 }}>
+            STRENGTH PROGRESSION
+          </div>
+          <StrengthChart snapshots={snapshots} currentDays={days} />
+
+          <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, margin: "28px 0 16px" }}>
             SESSIONS OVER TIME ({sessions.length} total)
           </div>
           {sessions.length < 2 ? (
@@ -885,6 +902,119 @@ Return ONLY a JSON array, no markdown. Each item: { "name": string, "sets": stri
   );
 }
 
+// ── Strength progression chart ─────────────────────────────────────────────
+
+function maxWeight(days: ProgrammeDay[], exName: string): number | null {
+  let max: number | null = null;
+  days.forEach(d => d.exercises.forEach(ex => {
+    if (ex.name === exName && ex.setLogs) {
+      ex.setLogs.forEach(s => {
+        const w = parseFloat(s.weight);
+        if (!isNaN(w) && w > 0 && (max === null || w > max)) max = w;
+      });
+    }
+  }));
+  return max;
+}
+
+function StrengthChart({ snapshots, currentDays }: { snapshots: WeekSnapshot[]; currentDays: ProgrammeDay[] }) {
+  // All exercise names that have at least one logged weight anywhere
+  const names = new Set<string>();
+  [...snapshots.map(s => s.days), currentDays].forEach(days =>
+    days?.forEach(d => d.exercises.forEach(ex => {
+      if (ex.setLogs?.some(s => parseFloat(s.weight) > 0)) names.add(ex.name);
+    }))
+  );
+  const exercises = Array.from(names).sort();
+  const [selected, setSelected] = useState<string>("");
+  const exName = selected || exercises[0] || "";
+
+  if (!exercises.length) {
+    return (
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "40px 20px", textAlign: "center", color: C.muted, fontSize: 14 }}>
+        No weights logged yet. Once the client records weights, their strength progression will appear here week by week.
+      </div>
+    );
+  }
+
+  // Build data points: one per snapshot (completed weeks) + current live week
+  const points: { label: string; date: string; value: number }[] = [];
+  snapshots.forEach((s, i) => {
+    const v = maxWeight(s.days, exName);
+    if (v !== null) points.push({
+      label: s.week_label || `Week ${i + 1}`,
+      date: new Date(s.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+      value: v,
+    });
+  });
+  const cur = maxWeight(currentDays, exName);
+  if (cur !== null) points.push({ label: "Current", date: "now", value: cur });
+
+  const first = points[0]?.value;
+  const last = points[points.length - 1]?.value;
+  const gain = first && last ? last - first : 0;
+
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "20px 16px 12px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+        <select value={exName} onChange={e => setSelected(e.target.value)}
+          style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "7px 12px", color: C.text, fontSize: 13, fontWeight: 600, outline: "none" }}>
+          {exercises.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        {points.length >= 2 && (
+          <span style={{ fontSize: 13, fontWeight: 700, color: gain >= 0 ? "#34D399" : C.danger, fontFamily: "JetBrains Mono" }}>
+            {gain >= 0 ? "▲" : "▼"} {Math.abs(gain)}kg {gain >= 0 ? "gained" : ""} ({first}kg → {last}kg)
+          </span>
+        )}
+      </div>
+
+      {points.length < 2 ? (
+        <div style={{ padding: "30px 10px", textAlign: "center", color: C.muted, fontSize: 13 }}>
+          {points.length === 1
+            ? `Current best: ${points[0].value}kg. Complete more weeks to see the trend.`
+            : "No weight data for this exercise yet."}
+        </div>
+      ) : (() => {
+        const W = 560, H = 180, padL = 40, padR = 16, padT = 20, padB = 36;
+        const chartW = W - padL - padR, chartH = H - padT - padB;
+        const maxV = Math.max(...points.map(p => p.value));
+        const minV = Math.min(...points.map(p => p.value));
+        const range = maxV - minV || 1;
+        const pts = points.map((p, i) => ({
+          x: padL + (i / (points.length - 1)) * chartW,
+          y: padT + (1 - (p.value - minV) / range) * chartH * 0.85 + chartH * 0.05,
+          ...p,
+        }));
+        const polyline = pts.map(p => `${p.x},${p.y}`).join(" ");
+        const area = `${pts[0].x},${padT + chartH} ${polyline} ${pts[pts.length - 1].x},${padT + chartH}`;
+        return (
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", overflow: "visible" }}>
+            {[0, 1, 2, 3].map(i => {
+              const y = padT + (i / 3) * chartH;
+              return <line key={i} x1={padL} x2={W - padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1} />;
+            })}
+            <defs>
+              <linearGradient id="strengthGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#34D399" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="#34D399" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <polygon points={area} fill="url(#strengthGrad)" />
+            <polyline points={polyline} fill="none" stroke="#34D399" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+            {pts.map((p, i) => (
+              <g key={i}>
+                <circle cx={p.x} cy={p.y} r={4} fill="#34D399" stroke="var(--surface)" strokeWidth={2} />
+                <text x={p.x} y={p.y - 10} textAnchor="middle" fontSize={10} fill="var(--text)" fontWeight="700">{p.value}kg</text>
+                <text x={p.x} y={H - 4} textAnchor="middle" fontSize={9} fill="var(--muted)">{p.label.replace(/Week (\d+).*/, "W$1")}</text>
+              </g>
+            ))}
+          </svg>
+        );
+      })()}
+    </div>
+  );
+}
+
 // ── Progress chart ─────────────────────────────────────────────────────────
 
 function ProgressChart({ sessions }: { sessions: ClientSession[] }) {
@@ -924,7 +1054,7 @@ function ProgressChart({ sessions }: { sessions: ClientSession[] }) {
         {/* Grid lines */}
         {[0, 1, 2, 3].map(i => {
           const y = padT + (i / 3) * chartH;
-          return <line key={i} x1={padL} x2={W - padR} y1={y} y2={y} stroke="#1E2238" strokeWidth={1} />;
+          return <line key={i} x1={padL} x2={W - padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1} />;
         })}
         {/* Area fill */}
         <defs>
@@ -939,10 +1069,10 @@ function ProgressChart({ sessions }: { sessions: ClientSession[] }) {
         {/* Dots + labels */}
         {pts.map((p, i) => (
           <g key={i}>
-            <circle cx={p.x} cy={p.y} r={4} fill="#3B6EF8" stroke="#0F1120" strokeWidth={2} />
-            <text x={p.x} y={p.y - 10} textAnchor="middle" fontSize={10} fill="#F0F2FA" fontWeight="700">{p.v}</text>
+            <circle cx={p.x} cy={p.y} r={4} fill="#3B6EF8" stroke="var(--surface)" strokeWidth={2} />
+            <text x={p.x} y={p.y - 10} textAnchor="middle" fontSize={10} fill="var(--text)" fontWeight="700">{p.v}</text>
             {(i === 0 || i === pts.length - 1 || pts.length <= 8) && (
-              <text x={p.x} y={H - 4} textAnchor="middle" fontSize={9} fill="#6B7199">{p.label}</text>
+              <text x={p.x} y={H - 4} textAnchor="middle" fontSize={9} fill="var(--muted)">{p.label}</text>
             )}
           </g>
         ))}
