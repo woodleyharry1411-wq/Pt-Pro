@@ -4,6 +4,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "PT Pro",
   description: "AI-powered personal training platform",
+  appleWebApp: {
+    capable: true,
+    title: "PT Pro",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
