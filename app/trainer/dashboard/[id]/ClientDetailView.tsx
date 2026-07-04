@@ -9,6 +9,11 @@ import { ExerciseInput } from "@/components/ExerciseInput";
 
 const bmi = (w: number, h: number) => (w / (h / 100) ** 2).toFixed(1);
 
+const GOALS          = ["Weight Loss", "Muscle Gain", "Improve Fitness", "Strength", "Flexibility & Mobility", "Athletic Performance"];
+const FITNESS_LEVELS = ["Beginner", "Intermediate", "Advanced"];
+const EQUIPMENT      = ["Full Gym", "Home Gym (Dumbbells/Bands)", "Bodyweight Only", "Outdoor/Park"];
+const GENDERS        = ["Male", "Female", "Other"];
+
 const CARDIO_KW = ["run", "bike", "cycl", "swim", "row", "cardio", "treadmill", "elliptic", "walk", "jog", "sprint", "hiit", "skip", "jump rope", "stair", "rower"];
 const isCardio = (name: string) => CARDIO_KW.some(k => name.toLowerCase().includes(k));
 
@@ -595,16 +600,11 @@ Return ONLY a JSON object, no markdown:
 
           {editingProfile ? (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {/* Numeric / text fields */}
               {([
                 { label: "Age", key: "age", type: "number" },
                 { label: "Weight (kg)", key: "weight", type: "number" },
                 { label: "Height (cm)", key: "height", type: "number" },
-                { label: "Gender", key: "gender", type: "text" },
-                { label: "Goal", key: "goal", type: "text" },
-                { label: "Fitness Level", key: "fitness_level", type: "text" },
-                { label: "Equipment", key: "equipment", type: "text" },
-                { label: "Days/Week", key: "days_per_week", type: "number" },
-                { label: "Session Duration (min)", key: "session_duration", type: "number" },
                 { label: "Login PIN (4-6 digits)", key: "pin", type: "text" },
               ] as { label: string; key: keyof typeof profileDraft; type: string }[]).map(({ label, key, type }) => (
                 <div key={key} style={{ background: C.card, border: `1px solid ${C.accent}40`, borderRadius: 14, padding: "14px 18px" }}>
@@ -617,6 +617,64 @@ Return ONLY a JSON object, no markdown:
                   />
                 </div>
               ))}
+
+              {/* Dropdown fields */}
+              {([
+                { label: "Gender", key: "gender", options: GENDERS },
+                { label: "Fitness Level", key: "fitness_level", options: FITNESS_LEVELS },
+                { label: "Equipment", key: "equipment", options: EQUIPMENT },
+                { label: "Days/Week", key: "days_per_week", options: ["3", "4", "5", "6"] },
+                { label: "Session Duration (min)", key: "session_duration", options: ["30", "45", "60", "75", "90", "120"] },
+              ] as { label: string; key: keyof typeof profileDraft; options: string[] }[]).map(({ label, key, options }) => {
+                const current = String(profileDraft[key] ?? "");
+                const isNumeric = key === "days_per_week" || key === "session_duration";
+                return (
+                  <div key={key} style={{ background: C.card, border: `1px solid ${C.accent}40`, borderRadius: 14, padding: "14px 18px" }}>
+                    <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginBottom: 6, letterSpacing: .5 }}>{label.toUpperCase()}</div>
+                    <select
+                      value={current}
+                      onChange={e => setProfileDraft(d => ({ ...d, [key]: isNumeric ? +e.target.value : e.target.value }))}
+                      style={{ background: "transparent", border: "none", outline: "none", color: C.text, fontSize: 15, fontWeight: 700, width: "100%", fontFamily: "inherit", cursor: "pointer" }}
+                    >
+                      {/* keep unusual legacy value selectable */}
+                      {current && !options.includes(current) && <option value={current}>{current}</option>}
+                      {options.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                );
+              })}
+
+              {/* Goals: multi-select chips */}
+              <div style={{ gridColumn: "1/-1", background: C.card, border: `1px solid ${C.accent}40`, borderRadius: 14, padding: "14px 18px" }}>
+                <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginBottom: 10, letterSpacing: .5 }}>GOALS (SELECT ALL THAT APPLY)</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {(() => {
+                    const selected = String(profileDraft.goal ?? "").split(" + ").filter(Boolean);
+                    const toggle = (g: string) => {
+                      const has = selected.includes(g);
+                      if (has && selected.length === 1) return; // keep at least one
+                      const next = has ? selected.filter(x => x !== g) : [...selected, g];
+                      setProfileDraft(d => ({ ...d, goal: next.join(" + ") }));
+                    };
+                    // include any legacy custom goal as its own chip
+                    const all = [...GOALS, ...selected.filter(g => !GOALS.includes(g))];
+                    return all.map(g => {
+                      const on = selected.includes(g);
+                      return (
+                        <button key={g} type="button" onClick={() => toggle(g)} style={{
+                          background: on ? `${C.accent}20` : C.bg,
+                          color: on ? C.accent : C.muted,
+                          border: `1px solid ${on ? C.accent : C.border}`,
+                          borderRadius: 10, padding: "7px 13px", fontWeight: 600, fontSize: 13,
+                          transition: "all .15s",
+                        }}>
+                          {on ? "✓ " : ""}{g}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
               <div style={{ gridColumn: "1/-1", background: C.card, border: `1px solid ${C.warn}44`, borderRadius: 14, padding: "14px 18px" }}>
                 <div style={{ fontSize: 11, color: C.warn, fontWeight: 700, marginBottom: 6 }}>INJURIES / LIMITATIONS</div>
                 <textarea
