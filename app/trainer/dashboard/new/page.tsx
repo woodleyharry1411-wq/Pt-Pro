@@ -11,7 +11,7 @@ const EQUIPMENT      = ["Full Gym", "Home Gym (Dumbbells/Bands)", "Bodyweight On
 
 type Form = {
   name: string; age: string; weight: string; height: string; gender: string;
-  goal: string; fitness_level: string; equipment: string; days_per_week: number;
+  goals: string[]; fitness_level: string; equipment: string; days_per_week: number;
   session_duration: number; injuries: string; notes: string;
 };
 
@@ -21,11 +21,19 @@ export default function NewClient() {
   const router = useRouter();
   const [form, setForm] = useState<Form>({
     name: "", age: "", weight: "", height: "", gender: "Male",
-    goal: GOALS[0], fitness_level: FITNESS_LEVELS[0], equipment: EQUIPMENT[0],
+    goals: [GOALS[0]], fitness_level: FITNESS_LEVELS[0], equipment: EQUIPMENT[0],
     days_per_week: 4, session_duration: 60, injuries: "", notes: "",
   });
   const [loading, setLoading] = useState(false);
-  const set = (k: keyof Form, v: string | number) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k: keyof Form, v: string | number | string[]) => setForm(f => ({ ...f, [k]: v }));
+
+  function toggleGoal(g: string) {
+    setForm(f => {
+      const has = f.goals.includes(g);
+      if (has && f.goals.length === 1) return f; // keep at least one goal
+      return { ...f, goals: has ? f.goals.filter(x => x !== g) : [...f.goals, g] };
+    });
+  }
 
   async function generate() {
     if (!form.name || !form.age || !form.weight || !form.height) {
@@ -51,7 +59,7 @@ You are designing a 4-week progressive training programme for this specific clie
 CLIENT PROFILE:
 - Name: ${form.name}, Age: ${form.age} (${ageContext}), Gender: ${form.gender}
 - Weight: ${form.weight}kg, Height: ${form.height}cm, BMI: ${bmiVal} (${bmiContext})
-- Primary Goal: ${form.goal}
+- Goals: ${form.goals.join(" + ")}${form.goals.length > 1 ? " (blend the programme to serve ALL of these goals — e.g. mix strength work and conditioning as appropriate)" : ""}
 - Fitness Level: ${form.fitness_level}
 - Available Equipment: ${form.equipment}
 - Training Days Per Week: ${form.days_per_week}
@@ -105,7 +113,7 @@ Return ONLY a JSON object, no markdown:
 
       const client = await saveClient({
         name: form.name, age: +form.age, weight: +form.weight, height: +form.height,
-        gender: form.gender, goal: form.goal, fitness_level: form.fitness_level,
+        gender: form.gender, goal: form.goals.join(" + "), fitness_level: form.fitness_level,
         equipment: form.equipment, days_per_week: form.days_per_week,
         session_duration: form.session_duration,
         injuries: form.injuries, notes: form.notes, programme,
@@ -146,7 +154,25 @@ Return ONLY a JSON object, no markdown:
 
       <Section title="Training Preferences">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <Sel label="Goal"          value={form.goal}          onChange={v => set("goal", v)}          options={GOALS} span={2} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 7, gridColumn: "span 2" }}>
+            <label style={{ fontSize: 13, color: C.muted, fontWeight: 600 }}>Goals (select all that apply)</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {GOALS.map(g => {
+                const on = form.goals.includes(g);
+                return (
+                  <button key={g} type="button" onClick={() => toggleGoal(g)} style={{
+                    background: on ? `${C.accent}20` : C.bg,
+                    color: on ? C.accent : C.muted,
+                    border: `1px solid ${on ? C.accent : C.border}`,
+                    borderRadius: 10, padding: "8px 14px", fontWeight: 600, fontSize: 13,
+                    transition: "all .15s",
+                  }}>
+                    {on ? "✓ " : ""}{g}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <Sel label="Fitness Level" value={form.fitness_level} onChange={v => set("fitness_level", v)} options={FITNESS_LEVELS} />
           <Sel label="Equipment"     value={form.equipment}     onChange={v => set("equipment", v)}     options={EQUIPMENT} />
           <Sel label="Days per Week" value={String(form.days_per_week)} onChange={v => set("days_per_week", +v)} options={["3","4","5","6"]} />

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { C } from "@/lib/colours";
 import { updateProgramme, logSession, updateClient, saveFeedback, deleteFeedback } from "@/lib/actions";
 import type { Client, ClientSession, ClientFeedback, Exercise, SetLog, Programme, ProgrammeDay, WeekSnapshot } from "@/lib/types";
+import { ExerciseInput } from "@/components/ExerciseInput";
 
 const bmi = (w: number, h: number) => (w / (h / 100) ** 2).toFixed(1);
 
@@ -441,11 +442,10 @@ Return ONLY a JSON object, no markdown:
                   <div style={{ padding: "16px 18px", borderTop: `1px solid ${C.border}`, background: C.card }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: C.accent, marginBottom: 12, letterSpacing: 1 }}>ADD EXERCISE</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <input
+                      <ExerciseInput
                         autoFocus
-                        value={newEx.name} onChange={e => setNewEx(n => ({ ...n, name: e.target.value }))}
-                        placeholder="Exercise name…"
-                        style={{ background: C.bg, border: `1px solid ${C.accent}`, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, outline: "none", width: "100%" }}
+                        value={newEx.name}
+                        onChange={v => setNewEx(n => ({ ...n, name: v }))}
                       />
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
                         {[
@@ -834,14 +834,23 @@ function ExerciseCard({ ex, idx, expanded, editing, onToggle, onToggleSet, onWei
             ] as { label: string; key: keyof Exercise; span?: boolean }[]).map(({ label, key, span }) => (
               <div key={key} style={{ gridColumn: span ? "1 / -1" : undefined }}>
                 <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 4 }}>{label}</div>
-                <input
-                  value={String(ex[key] ?? "")}
-                  onChange={e => onUpdate({ [key]: e.target.value })}
-                  placeholder={label}
-                  style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px", color: C.text, fontSize: 13, outline: "none", width: "100%" }}
-                  onFocus={e => (e.target.style.borderColor = C.accent)}
-                  onBlur={e => (e.target.style.borderColor = C.border)}
-                />
+                {key === "name" ? (
+                  <ExerciseInput
+                    value={String(ex.name ?? "")}
+                    onChange={v => onUpdate({ name: v })}
+                    placeholder={label}
+                    style={{ padding: "8px 10px", fontSize: 13 }}
+                  />
+                ) : (
+                  <input
+                    value={String(ex[key] ?? "")}
+                    onChange={e => onUpdate({ [key]: e.target.value })}
+                    placeholder={label}
+                    style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px", color: C.text, fontSize: 13, outline: "none", width: "100%" }}
+                    onFocus={e => (e.target.style.borderColor = C.accent)}
+                    onBlur={e => (e.target.style.borderColor = C.border)}
+                  />
+                )}
               </div>
             ))}
           </div>
